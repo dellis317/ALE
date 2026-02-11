@@ -109,8 +109,20 @@ def _entry_to_response(entry) -> LibraryEntryResponse:
 
 
 # ---------------------------------------------------------------------------
-# Enrich endpoint (LLM stub)
+# Enrich endpoint (delegates to LLM when configured, graceful fallback)
 # ---------------------------------------------------------------------------
+
+_llm_client = None
+
+
+def _get_llm_client():
+    """Lazy-init a shared LLMClient instance."""
+    global _llm_client
+    if _llm_client is None:
+        from ale.llm.client import LLMClient
+
+        _llm_client = LLMClient()
+    return _llm_client
 
 
 @router.post(
@@ -121,15 +133,51 @@ def _entry_to_response(entry) -> LibraryEntryResponse:
 async def enrich_yaml(request: EnrichRequest):
     """Apply LLM enrichment to a draft YAML.
 
-    Currently returns the same YAML with a placeholder comment.
+    When an ANTHROPIC_API_KEY is configured, sends the YAML to the LLM for
+    real enrichment.  Otherwise returns the original YAML unchanged with
+    actionable suggestions so the user can still iterate.
     """
     if not request.yaml_content.strip():
         raise HTTPException(status_code=400, detail="yaml_content is required")
 
-    enriched = "# LLM enrichment placeholder\n" + request.yaml_content
+    client = _get_llm_client()
+
+    if client.configured:
+        from ale.llm.prompts import LIBRARY_ENRICHMENT_PROMPT
+        from ale.llm.usage_tracker import UsageTracker
+
+        prompt = LIBRARY_ENRICHMENT_PROMPT.format(yaml_content=request.yaml_content)
+        resp = client.complete(prompt)
+
+        # Track usage
+        tracker = UsageTracker()
+        tracker.record_usage(
+            model=resp.model,
+            input_tokens=resp.input_tokens,
+            output_tokens=resp.output_tokens,
+            purpose="enrich",
+            cost_estimate=resp.cost_estimate,
+        )
+
+        enriched = resp.content
+        # If the model prepended commentary, try to separate it
+        if "---" in enriched:
+            parts = enriched.split("---", 1)
+            if len(parts) == 2 and len(parts[1].strip()) > len(parts[0].strip()):
+                enriched = "---" + parts[1]
+
+        return EnrichResponse(
+            enriched_yaml=enriched,
+            suggestions=[
+                "LLM enrichment applied -- review changes before accepting",
+            ],
+        )
+
+    # No LLM configured -- return original YAML with helpful suggestions
     return EnrichResponse(
-        enriched_yaml=enriched,
+        enriched_yaml=request.yaml_content,
         suggestions=[
+            "LLM not configured (set ANTHROPIC_API_KEY for AI enrichment)",
             "Consider adding more detailed instruction steps",
             "Add validation hooks for automated testing",
             "Include compatibility targets for popular frameworks",

@@ -474,9 +474,18 @@ export default function LibraryDetail() {
               Maintainer
             </h2>
             <div className="flex items-center gap-3">
-              {/* Avatar placeholder */}
-              <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0">
-                <User size={20} className="text-gray-400" />
+              <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0">
+                {library.quality.maintainer ? (
+                  <span className="text-sm font-bold text-indigo-600">
+                    {library.quality.maintainer
+                      .split(/[\s_-]+/)
+                      .slice(0, 2)
+                      .map((w) => w[0]?.toUpperCase() ?? '')
+                      .join('')}
+                  </span>
+                ) : (
+                  <User size={20} className="text-indigo-400" />
+                )}
               </div>
               <div>
                 <p className="text-sm font-medium text-gray-900">
