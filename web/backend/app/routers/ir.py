@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException
 
 from ale.ir.python_parser import parse_python_file
 
-from app.models.api import (
+from web.backend.app.models.api import (
     IRDependencyResponse,
     IRModuleResponse,
     IRParameterResponse,

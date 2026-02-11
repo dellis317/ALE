@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException
 from ale.analyzers.repo_analyzer import RepoAnalyzer
 from ale.generators.library_generator import LibraryGenerator
 
-from app.models.api import (
+from web.backend.app.models.api import (
     AnalyzeRequest,
     CandidateResponse,
     GenerateRequest,

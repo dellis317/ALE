@@ -12,7 +12,7 @@ from fastapi import APIRouter, HTTPException, Query, UploadFile, File
 from ale.registry.local_registry import LocalRegistry
 from ale.registry.models import SearchQuery
 
-from app.models.api import (
+from web.backend.app.models.api import (
     LibraryEntryResponse,
     QualitySignalsResponse,
     SearchQueryRequest,

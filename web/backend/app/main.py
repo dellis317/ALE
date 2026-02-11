@@ -21,7 +21,7 @@ if _project_root not in sys.path:
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import analyze, conformance, drift, ir, registry
+from web.backend.app.routers import analyze, conformance, drift, ir, registry
 
 app = FastAPI(
     title="ALE API",
