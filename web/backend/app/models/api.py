@@ -1043,3 +1043,67 @@ class ModerationErrorResponse(BaseModel):
     reason: str
     violation_type: str
     is_locked: bool = False
+
+
+# ---------------------------------------------------------------------------
+# Library Update Detection models
+# ---------------------------------------------------------------------------
+
+
+class FileChangeResponse(BaseModel):
+    """A single changed file with its diff stats."""
+
+    path: str
+    insertions: int = 0
+    deletions: int = 0
+    status: str = ""  # A(dded), M(odified), D(eleted), R(enamed)
+
+
+class UpdateCheckRequest(BaseModel):
+    """Request body for checking a generated library for source repo updates."""
+
+    library_id: str
+
+
+class UpdateCheckResponse(BaseModel):
+    """Result of checking a source repo for updates."""
+
+    has_updates: bool = False
+    severity: str = "none"  # none | patch | minor | major
+    severity_reason: str = ""
+
+    current_commit: str = ""
+    latest_commit: str = ""
+    new_commit_count: int = 0
+    commit_messages: list[str] = Field(default_factory=list)
+
+    files_changed: int = 0
+    total_insertions: int = 0
+    total_deletions: int = 0
+    changed_files: list[FileChangeResponse] = Field(default_factory=list)
+
+    source_files_affected: int = 0
+    source_files_changed: list[str] = Field(default_factory=list)
+
+    new_tags: list[str] = Field(default_factory=list)
+    latest_tag: str = ""
+
+    summary: str = ""
+    change_notes: list[str] = Field(default_factory=list)
+
+    # Library context
+    library_id: str = ""
+    library_name: str = ""
+
+
+class UpdateLibraryRequest(BaseModel):
+    """Request body for updating (rebuilding) a library from latest source."""
+
+    library_id: str
+
+
+class CreateFromLatestRequest(BaseModel):
+    """Request body for creating a new library version from latest source."""
+
+    library_id: str
+    new_name: str = ""  # Optional custom name; defaults to original + timestamp

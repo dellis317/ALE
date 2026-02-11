@@ -42,6 +42,8 @@ import type {
   AIQueryResponse,
   AIQueryHistoryEntry,
   UserModerationStatus,
+  UpdateCheckResult,
+  GenerateLibraryResponse,
 } from '../types';
 
 class ApiError extends Error {
@@ -677,5 +679,26 @@ export async function getUserModerationStatus(): Promise<UserModerationStatus> {
 export async function adminUnlockUser(userId: string): Promise<void> {
   await request<void>(`/api/ai-query/admin/unlock/${encodeURIComponent(userId)}`, {
     method: 'POST',
+  });
+}
+
+// Library Update Detection API
+
+export async function checkLibraryUpdates(libraryId: string): Promise<UpdateCheckResult> {
+  return request<UpdateCheckResult>(`/api/generate/libraries/${encodeURIComponent(libraryId)}/check-updates`, {
+    method: 'POST',
+  });
+}
+
+export async function updateLibrary(libraryId: string): Promise<GenerateLibraryResponse> {
+  return request<GenerateLibraryResponse>(`/api/generate/libraries/${encodeURIComponent(libraryId)}/update`, {
+    method: 'POST',
+  });
+}
+
+export async function createLibraryFromLatest(libraryId: string, newName?: string): Promise<GenerateLibraryResponse> {
+  return request<GenerateLibraryResponse>(`/api/generate/libraries/${encodeURIComponent(libraryId)}/create-from-latest`, {
+    method: 'POST',
+    body: JSON.stringify({ library_id: libraryId, new_name: newName || '' }),
   });
 }

@@ -18,9 +18,11 @@ from ale.spec.schema_validator import validate_schema
 from ale.spec.semantic_validator import validate_semantics
 
 from web.backend.app.models.api import (
+    CreateFromLatestRequest,
     DraftResponse,
     EnrichRequest,
     EnrichResponse,
+    FileChangeResponse,
     GeneratedLibraryResponse,
     GenerateHierarchicalLibraryRequest,
     GenerateHierarchicalLibraryResponse,
@@ -29,6 +31,8 @@ from web.backend.app.models.api import (
     PublishFromEditorRequest,
     QualitySignalsResponse,
     SaveDraftRequest,
+    UpdateCheckResponse,
+    UpdateLibraryRequest,
     ValidateContentRequest,
     ValidateContentResponse,
     VerificationResultResponse,
@@ -904,11 +908,13 @@ async def generate_hierarchical_library(request: GenerateHierarchicalLibraryRequ
         structure=structure,
     )
 
-    # Persist to disk
+    # Persist to disk — include source commit for future update detection
     libs_dir = _ensure_libraries_dir()
     lib_path = libs_dir / f"{library_id}.json"
+    lib_data = library.model_dump()
+    lib_data["source_commit"] = _get_repo_head_commit(request.repo_path)
     with open(lib_path, "w") as f:
-        json.dump(library.model_dump(), f, indent=2)
+        json.dump(lib_data, f, indent=2)
 
     return GenerateHierarchicalLibraryResponse(
         success=True,
@@ -975,3 +981,269 @@ async def delete_generated_library(library_id: str):
 
     lib_path.unlink()
     return {"detail": "Library deleted"}
+
+
+# ---------------------------------------------------------------------------
+# Library Update Detection
+# ---------------------------------------------------------------------------
+
+
+def _load_library(library_id: str) -> dict:
+    """Load a generated library JSON by ID, or raise 404."""
+    libs_dir = _ensure_libraries_dir()
+    lib_path = libs_dir / f"{library_id}.json"
+    if not lib_path.exists():
+        raise HTTPException(status_code=404, detail=f"Library '{library_id}' not found")
+    try:
+        with open(lib_path) as f:
+            return json.load(f)
+    except (json.JSONDecodeError, KeyError) as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to read library: {exc}")
+
+
+def _extract_source_files_from_structure(structure: dict) -> list[str]:
+    """Walk the library document tree and extract referenced source file paths."""
+    files: list[str] = []
+    content = structure.get("content", "")
+    # Look for backtick-quoted file paths in the content
+    for match in re.finditer(r"`([^`]+\.\w+)`", content):
+        candidate = match.group(1)
+        # Filter to likely file paths (contain / or end with known extensions)
+        if "/" in candidate or candidate.endswith((".py", ".ts", ".tsx", ".js", ".jsx", ".go", ".rs", ".java")):
+            files.append(candidate)
+
+    for child in structure.get("children", []):
+        files.extend(_extract_source_files_from_structure(child))
+
+    return list(dict.fromkeys(files))  # deduplicate preserving order
+
+
+def _get_repo_head_commit(repo_path: str) -> str:
+    """Get the current HEAD commit SHA for a repo path."""
+    try:
+        from git import Repo as GitRepo
+        r = GitRepo(repo_path)
+        return str(r.head.commit.hexsha)
+    except Exception:
+        return ""
+
+
+@router.post(
+    "/libraries/{library_id}/check-updates",
+    response_model=UpdateCheckResponse,
+    summary="Check if a generated library's source repo has updates",
+)
+async def check_library_updates(library_id: str):
+    """Check the source repository for changes since the library was generated.
+
+    Analyzes the git history of the source repo and classifies changes
+    as major, minor, or patch based on commit volume, file churn, version
+    tags, and whether the library's own source files were affected.
+    """
+    lib = _load_library(library_id)
+    repo_path = lib.get("repo_path", "")
+
+    if not repo_path or not Path(repo_path).is_dir():
+        raise HTTPException(
+            status_code=400,
+            detail=f"Source repository path is not accessible: {repo_path}",
+        )
+
+    # Extract source files from the library structure for relevance checking
+    source_files = _extract_source_files_from_structure(lib.get("structure", {}))
+
+    # Determine the commit the library was generated from
+    # We store this in the library metadata; if not present, use the creation timestamp
+    since_commit = lib.get("source_commit", "")
+
+    from ale.sync.update_checker import check_for_updates
+
+    result = check_for_updates(
+        repo_path=repo_path,
+        since_commit=since_commit,
+        source_files=source_files,
+    )
+
+    return UpdateCheckResponse(
+        has_updates=result.has_updates,
+        severity=result.severity,
+        severity_reason=result.severity_reason,
+        current_commit=result.current_commit,
+        latest_commit=result.latest_commit,
+        new_commit_count=result.new_commit_count,
+        commit_messages=result.commit_messages,
+        files_changed=result.files_changed,
+        total_insertions=result.total_insertions,
+        total_deletions=result.total_deletions,
+        changed_files=[
+            FileChangeResponse(
+                path=fc.path,
+                insertions=fc.insertions,
+                deletions=fc.deletions,
+                status=fc.status,
+            )
+            for fc in result.changed_files[:50]
+        ],
+        source_files_affected=result.source_files_affected,
+        source_files_changed=result.source_files_changed,
+        new_tags=result.new_tags,
+        latest_tag=result.latest_tag,
+        summary=result.summary,
+        change_notes=result.change_notes,
+        library_id=library_id,
+        library_name=lib.get("name", ""),
+    )
+
+
+@router.post(
+    "/libraries/{library_id}/update",
+    response_model=GenerateHierarchicalLibraryResponse,
+    summary="Rebuild a library from the latest source (in-place update)",
+)
+async def update_library(library_id: str):
+    """Rebuild the library from the latest source repo state.
+
+    Overwrites the existing library with a freshly generated version
+    using the same candidate parameters but the latest source code.
+    """
+    lib = _load_library(library_id)
+    repo_path = lib.get("repo_path", "")
+    candidate_name = lib.get("candidate_name", "")
+
+    if not repo_path or not Path(repo_path).is_dir():
+        raise HTTPException(
+            status_code=400,
+            detail=f"Source repository path is not accessible: {repo_path}",
+        )
+
+    # Extract the original generation parameters from the stored library
+    raw_name = candidate_name
+    if raw_name == "__whole_codebase__":
+        raw_name = Path(repo_path).name or "codebase"
+    display_name = raw_name.replace("_", " ").replace("-", " ").title()
+    slug = _slugify(raw_name) + "_library"
+
+    # Extract source files and other metadata from the original structure
+    source_files = _extract_source_files_from_structure(lib.get("structure", {}))
+    description = lib.get("structure", {}).get("summary", "")
+
+    # Capture current commit for future update checks
+    current_commit = _get_repo_head_commit(repo_path)
+
+    structure = _build_library_structure(
+        name=display_name,
+        slug=slug,
+        description=description,
+        source_files=source_files,
+        entry_points=[],
+        tags=[],
+        repo_path=repo_path,
+        candidate_name=candidate_name,
+    )
+
+    now = datetime.now(timezone.utc).isoformat()
+
+    updated_library = GeneratedLibraryResponse(
+        id=library_id,  # Keep the same ID
+        name=display_name,
+        root_doc=f"{slug}.md",
+        repo_path=repo_path,
+        candidate_name=candidate_name,
+        created_at=lib.get("created_at", now),
+        updated_at=now,
+        structure=structure,
+    )
+
+    # Persist (overwrite) to disk
+    libs_dir = _ensure_libraries_dir()
+    lib_path = libs_dir / f"{library_id}.json"
+    lib_data = updated_library.model_dump()
+    lib_data["source_commit"] = current_commit
+    with open(lib_path, "w") as f:
+        json.dump(lib_data, f, indent=2)
+
+    return GenerateHierarchicalLibraryResponse(
+        success=True,
+        library=updated_library,
+        message=f"Library '{display_name}' updated from latest source. Commit: {current_commit[:12]}",
+    )
+
+
+@router.post(
+    "/libraries/{library_id}/create-from-latest",
+    response_model=GenerateHierarchicalLibraryResponse,
+    summary="Create a new library version from latest source (preserves original)",
+)
+async def create_from_latest(library_id: str, request: CreateFromLatestRequest):
+    """Create a new library from the latest source, preserving the original.
+
+    This allows the user to test and experiment with the new version
+    before deciding to overwrite the existing library.
+    """
+    lib = _load_library(library_id)
+    repo_path = lib.get("repo_path", "")
+    candidate_name = lib.get("candidate_name", "")
+
+    if not repo_path or not Path(repo_path).is_dir():
+        raise HTTPException(
+            status_code=400,
+            detail=f"Source repository path is not accessible: {repo_path}",
+        )
+
+    raw_name = candidate_name
+    if raw_name == "__whole_codebase__":
+        raw_name = Path(repo_path).name or "codebase"
+
+    # Use custom name or generate one with timestamp
+    now = datetime.now(timezone.utc)
+    if request.new_name and request.new_name.strip():
+        display_name = request.new_name.strip()
+    else:
+        display_name = raw_name.replace("_", " ").replace("-", " ").title()
+        display_name = f"{display_name} ({now.strftime('%Y-%m-%d %H:%M')})"
+
+    slug = _slugify(display_name) + "_library"
+
+    source_files = _extract_source_files_from_structure(lib.get("structure", {}))
+    description = lib.get("structure", {}).get("summary", "")
+
+    current_commit = _get_repo_head_commit(repo_path)
+
+    structure = _build_library_structure(
+        name=display_name,
+        slug=slug,
+        description=description,
+        source_files=source_files,
+        entry_points=[],
+        tags=[],
+        repo_path=repo_path,
+        candidate_name=candidate_name,
+    )
+
+    new_library_id = str(uuid.uuid4())
+
+    new_library = GeneratedLibraryResponse(
+        id=new_library_id,
+        name=display_name,
+        root_doc=f"{slug}.md",
+        repo_path=repo_path,
+        candidate_name=candidate_name,
+        created_at=now.isoformat(),
+        updated_at=now.isoformat(),
+        structure=structure,
+    )
+
+    # Persist as a new file
+    libs_dir = _ensure_libraries_dir()
+    lib_path = libs_dir / f"{new_library_id}.json"
+    lib_data = new_library.model_dump()
+    lib_data["source_commit"] = current_commit
+    lib_data["forked_from"] = library_id
+    with open(lib_path, "w") as f:
+        json.dump(lib_data, f, indent=2)
+
+    return GenerateHierarchicalLibraryResponse(
+        success=True,
+        library=new_library,
+        message=f"New library '{display_name}' created from latest source. Original preserved.",
+    )
