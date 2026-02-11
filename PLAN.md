@@ -196,7 +196,35 @@ API endpoints: Uses existing `POST /api/ir/parse` — no backend changes needed.
 - Batch validation: "Validate All" button that runs conformance across all registry libraries
 - Evidence download: export conformance results as JSON attestation artifact
 
-#### Repo Analyzer enhancements:
+#### Repo Analyzer enhancements (critical — current analyzer is a stub):
+
+**Problem:** The analyzer's Phase 2 (AST analysis) and Phase 3 (LLM-assisted) are TODO stubs. Candidate descriptions are hardcoded as `"Utility module: {name}"`. No actual code understanding happens — candidates are discovered purely by directory naming heuristics (utils/, helpers/, lib/, etc.). Entry points are file stems, not real symbols. Dependency lists aren't populated.
+
+**Implement Phase 2 — AST-based code understanding:**
+- Wire up the existing IR parser (`ale.ir.python_parser.parse_python_file`) into the analyzer pipeline
+- For each candidate's source files, parse to IR and extract:
+  - **Real symbols**: function names, class names, method signatures, docstrings
+  - **Real entry points**: public functions/classes (not file stems)
+  - **Dependency graph**: what this module imports, what imports this module (fan-in/fan-out)
+  - **Side effects**: file I/O, network, database calls detected per symbol
+- Generate a **rich description** from the parsed IR:
+  - Module purpose (derived from top-level docstring + dominant symbol kinds)
+  - Key functions/classes with their signatures and one-line docstring summaries
+  - Internal vs external dependency summary
+  - Call pattern: "called by N modules" / "calls into N modules" (app context)
+- Populate `dependencies_external` and `dependencies_internal` lists (currently empty)
+- Populate `entry_points` with actual `module.ClassName` / `module.function_name` symbols
+
+**New fields on ExtractionCandidate model:**
+- `context_summary: str` — human-readable paragraph: what this code does, its role in the app, why it's extractable
+- `symbols: list[dict]` — key symbols with name, kind, signature, docstring
+- `callers: list[str]` — which other modules in the repo import/call this candidate
+- `callees: list[str]` — which other modules this candidate depends on
+
+**UI enhancements:**
+- Expanded candidate card shows rich description (multi-line, not truncated)
+- Symbol list with signatures and docstrings
+- "Used by" / "Depends on" sections showing app context
 - "Generate Library" button on each candidate card → navigates to Generator page with pre-filled params
 - Side-by-side comparison: select 2+ candidates, show radar chart comparison
 - Improved candidate detail: radar/spider chart for scoring dimensions (replace linear bars)
@@ -216,27 +244,33 @@ GET  /api/registry/{name}/versions               → All versions of a library
 GET  /api/drift/summary?repo_path=...            → Aggregate drift stats
 ```
 
-New core module:
+New core modules:
 ```
-ale/spec/conformance_history.py   # Store/retrieve past conformance runs
+ale/spec/conformance_history.py          # Store/retrieve past conformance runs
+ale/analyzers/code_analyzer.py           # Phase 2: AST/IR-based code understanding
+ale/analyzers/context_builder.py         # Build call graph context (who calls what)
 ```
 
 Files modified:
 ```
+ale/models/candidate.py                    # Add context_summary, symbols, callers, callees fields
+ale/analyzers/repo_analyzer.py             # Wire Phase 2 into analysis pipeline
 web/frontend/src/pages/Registry.tsx        # Sort, pagination, filters, badges
 web/frontend/src/pages/LibraryDetail.tsx   # Version history, instructions, guardrails
 web/frontend/src/pages/Conformance.tsx     # History, batch, export
-web/frontend/src/pages/Analyzer.tsx        # Generate button, comparison, radar chart
+web/frontend/src/pages/Analyzer.tsx        # Rich descriptions, symbols, context, comparison, radar chart
 web/frontend/src/pages/Drift.tsx           # Summary stats, per-library view, export
 web/frontend/src/components/RadarChart.tsx  # New: spider/radar chart component
+web/frontend/src/components/SymbolList.tsx  # New: symbol signatures + docstrings display
 web/frontend/src/components/StepList.tsx    # New: instruction step renderer
 web/frontend/src/components/GuardrailList.tsx # New: guardrail checklist renderer
-web/frontend/src/types/index.ts            # Extended types
+web/frontend/src/types/index.ts            # Extended types (candidate context fields)
 web/frontend/src/api/client.ts             # New API functions
 web/backend/app/routers/conformance.py     # History + batch endpoints
 web/backend/app/routers/registry.py        # Version list endpoint
+web/backend/app/routers/analyze.py         # Extended CandidateResponse with new fields
 web/backend/app/routers/drift.py           # Summary endpoint
-web/backend/app/models/api.py              # New response models
+web/backend/app/models/api.py              # New/extended response models
 ```
 
 ---
@@ -358,7 +392,7 @@ GET    /api/approvals/history            → Approval history
 
 ### Agent 7: LLM Integration & Cost Controls
 
-**Depends on:** Agent 2 (Generator) for enrichment surface, Agent 1 (Auth) for per-user key management
+**Depends on:** Agent 2 (Generator) for enrichment surface, Agent 1 (Auth) for per-user key management, Agent 4 (Phase 2 analyzer) for IR-based candidate data to enrich
 
 **Scope:**
 
@@ -371,6 +405,14 @@ Backend:
 - Feature toggles: admin can enable/disable specific LLM features
 - Outcome-based discovery: LLM-powered goal → library recommendation mapping
 - Enrichment pipeline: improve library clarity, security, robustness suggestions
+- **Analyzer Phase 3 — LLM-powered candidate enrichment** (implements the `deep` depth mode):
+  - Takes Phase 2 IR output (symbols, dependency graph, call context) as structured input
+  - Generates human-readable `context_summary`: what the module does, what problem it solves, why it's a good extraction candidate, how it fits in the app architecture
+  - Generates `description` upgrade: replaces the generic "Utility module: X" with a real explanation
+  - Suggests tags and capability labels derived from semantic understanding
+  - Flags architectural concerns the heuristic scorer can't detect (e.g., "this module has hidden coupling to the database layer via a global config object")
+  - All LLM calls use **IR summaries and symbol signatures, not raw source code** (privacy-preserving by default)
+  - Shows "What will be sent" preview before any LLM call
 
 Frontend:
 - LLM settings page at `/settings/llm`
@@ -387,6 +429,10 @@ Frontend:
   - "Enhance with AI" button shows diff preview
   - "What will be sent" transparency panel before any LLM call
   - Accept/reject individual suggestions
+- **Analyzer `deep` mode integration:**
+  - When user selects "deep" analysis depth, results include LLM-enriched descriptions
+  - Each candidate card shows an "AI-enriched" badge when description was LLM-generated
+  - "Enrich" button on individual candidates (for quick/standard results) to selectively upgrade descriptions via LLM
 
 Files created:
 ```
@@ -396,6 +442,7 @@ ale/llm/cost_tracker.py          # Usage logging + cost estimation
 ale/llm/rate_limiter.py          # Per-user/org rate limits
 ale/llm/enrichment.py            # Library enrichment pipeline
 ale/llm/outcome_discovery.py     # Goal → recommendation mapping
+ale/llm/candidate_enrichment.py  # Analyzer Phase 3: IR → LLM → rich descriptions
 web/backend/app/routers/llm.py
 web/frontend/src/pages/LLMSettings.tsx
 web/frontend/src/components/OutcomeDiscovery.tsx   # Goal input + results
@@ -408,6 +455,7 @@ API endpoints:
 ```
 POST   /api/llm/discover              → Outcome-based discovery (goal → recommendations)
 POST   /api/llm/enrich                → Enrich library draft
+POST   /api/llm/enrich-candidate      → Enrich single analyzer candidate with LLM context
 POST   /api/llm/preview-plan          → Generate Outcome Preview Plan
 GET    /api/llm/usage                 → Current usage stats
 PUT    /api/llm/settings              → Update LLM settings (keys, toggles)
