@@ -1,8 +1,15 @@
-"""Validator — check Agentic Library spec files for correctness."""
+"""Validator — check Agentic Library spec files for correctness.
+
+This module provides a simplified validation interface. For full executable
+spec validation (schema + semantic + reference runner), use ale.spec directly.
+"""
 
 from pathlib import Path
 
 import yaml
+
+from ale.spec.schema_validator import validate_schema
+from ale.spec.semantic_validator import validate_semantics
 
 
 REQUIRED_MANIFEST_FIELDS = {"name", "version", "description"}
@@ -13,6 +20,7 @@ VALID_COMPLEXITIES = {"trivial", "simple", "moderate", "complex"}
 def validate_library(library_path: str) -> list[str]:
     """Validate an Agentic Library YAML file.
 
+    Runs both schema validation and basic structural checks.
     Returns a list of issues found. Empty list means valid.
     """
     issues: list[str] = []
@@ -32,17 +40,16 @@ def validate_library(library_path: str) -> list[str]:
 
     lib = data["agentic_library"]
 
-    # Validate manifest
+    # Basic structural validation (backward-compatible checks)
     manifest = lib.get("manifest", {})
-    for field in REQUIRED_MANIFEST_FIELDS:
-        if not manifest.get(field):
-            issues.append(f"Manifest missing required field: {field}")
+    for field_name in REQUIRED_MANIFEST_FIELDS:
+        if not manifest.get(field_name):
+            issues.append(f"Manifest missing required field: {field_name}")
 
     complexity = manifest.get("complexity", "")
     if complexity and complexity not in VALID_COMPLEXITIES:
         issues.append(f"Invalid complexity '{complexity}'. Must be one of: {VALID_COMPLEXITIES}")
 
-    # Validate instructions
     instructions = lib.get("instructions", [])
     if not instructions:
         issues.append("No instructions defined — library must have at least one step")
@@ -53,7 +60,6 @@ def validate_library(library_path: str) -> list[str]:
             if not step.get("description"):
                 issues.append(f"Instruction step {i + 1} missing 'description'")
 
-    # Validate guardrails
     for i, guardrail in enumerate(lib.get("guardrails", [])):
         if not guardrail.get("rule"):
             issues.append(f"Guardrail {i + 1} missing 'rule'")
@@ -61,7 +67,6 @@ def validate_library(library_path: str) -> list[str]:
         if severity and severity not in VALID_SEVERITIES:
             issues.append(f"Guardrail {i + 1} invalid severity '{severity}'")
 
-    # Validate validation criteria
     for i, criterion in enumerate(lib.get("validation", [])):
         if not criterion.get("description"):
             issues.append(f"Validation criterion {i + 1} missing 'description'")
