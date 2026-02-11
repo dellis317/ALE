@@ -249,6 +249,7 @@ export interface CodebaseSummary {
 export interface AnalyzeResult {
   summary: CodebaseSummary;
   candidates: Candidate[];
+  source_repo_url: string;
 }
 
 // Conformance history
@@ -496,6 +497,7 @@ export interface GeneratedLibrary {
   created_at: string;
   updated_at: string;
   structure: LibraryDocNode;
+  source_repo_url: string;
 }
 
 export interface GenerateLibraryRequest {
@@ -505,6 +507,7 @@ export interface GenerateLibraryRequest {
   source_files: string[];
   entry_points: string[];
   tags: string[];
+  source_repo_url: string;
 }
 
 export interface GenerateLibraryResponse {

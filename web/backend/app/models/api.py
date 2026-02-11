@@ -231,6 +231,7 @@ class AnalyzeResponse(BaseModel):
         default_factory=CodebaseSummaryResponse
     )
     candidates: list[CandidateResponse] = Field(default_factory=list)
+    source_repo_url: str = ""
 
 
 class AnalyzeRequest(BaseModel):
@@ -966,6 +967,7 @@ class GeneratedLibraryResponse(BaseModel):
     created_at: str = ""
     updated_at: str = ""
     structure: LibraryDocNodeResponse
+    source_repo_url: str = ""
 
 
 class GenerateHierarchicalLibraryRequest(BaseModel):
@@ -977,6 +979,7 @@ class GenerateHierarchicalLibraryRequest(BaseModel):
     source_files: list[str] = Field(default_factory=list)
     entry_points: list[str] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
+    source_repo_url: str = ""
 
 
 class GenerateHierarchicalLibraryResponse(BaseModel):

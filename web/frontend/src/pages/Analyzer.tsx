@@ -457,6 +457,7 @@ export default function Analyzer() {
         source_files: candidate.source_files,
         entry_points: candidate.entry_points,
         tags: candidate.tags,
+        source_repo_url: result?.source_repo_url || repoPath,
       }),
     onSuccess: (data) => {
       setGeneratingCandidate(null);

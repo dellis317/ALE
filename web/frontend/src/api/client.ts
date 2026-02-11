@@ -618,6 +618,7 @@ export async function generateHierarchicalLibrary(params: {
   source_files: string[];
   entry_points: string[];
   tags: string[];
+  source_repo_url?: string;
 }): Promise<GenerateLibraryResponse> {
   return request<GenerateLibraryResponse>('/api/generate/library', {
     method: 'POST',
@@ -627,6 +628,12 @@ export async function generateHierarchicalLibrary(params: {
 
 export async function listGeneratedLibraries(): Promise<GeneratedLibrary[]> {
   return request<GeneratedLibrary[]>('/api/generate/libraries');
+}
+
+export async function searchGeneratedLibraries(text: string = ''): Promise<GeneratedLibrary[]> {
+  const params = new URLSearchParams();
+  if (text) params.set('text', text);
+  return request<GeneratedLibrary[]>(`/api/generate/libraries/search?${params.toString()}`);
 }
 
 export async function getGeneratedLibrary(id: string): Promise<GeneratedLibrary> {

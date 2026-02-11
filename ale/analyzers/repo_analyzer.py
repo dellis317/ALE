@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from ale.models.candidate import CodebaseSummary, ExtractionCandidate
-from ale.utils.git_ops import ensure_local_repo
+from ale.utils.git_ops import ensure_local_repo, RepoHandle
 from ale.utils.file_scanner import scan_project_files, classify_file
 
 
@@ -16,16 +16,20 @@ class AnalysisResult:
         self,
         summary: CodebaseSummary,
         candidates: list[ExtractionCandidate],
+        source_repo_url: str = "",
     ):
         self.summary = summary
         self.candidates = candidates
+        self.source_repo_url = source_repo_url
 
 
 class RepoAnalyzer:
     """Analyzes a Git repository to find features suitable for agentic extraction."""
 
     def __init__(self, repo_path: str):
-        self.repo_path = ensure_local_repo(repo_path)
+        self._handle: RepoHandle = ensure_local_repo(repo_path)
+        self.repo_path: Path = self._handle.local_path
+        self.source_repo_url: str = self._handle.display_path
         self.candidates: list[ExtractionCandidate] = []
         self.summary = CodebaseSummary()
         self._ir_modules: dict[str, object] = {}
@@ -36,34 +40,73 @@ class RepoAnalyzer:
         Args:
             depth: Analysis depth — "quick" (file-level heuristics only),
                    "standard" (+ AST analysis), "deep" (+ LLM-assisted).
+
+        After analysis, temporary clones are cleaned up automatically.
+        Source file paths in candidates are stored as **relative** paths
+        (relative to the repo root) so that they don't leak temp directory
+        locations into the generated library output.
         """
-        project_files = scan_project_files(self.repo_path)
+        try:
+            project_files = scan_project_files(self.repo_path)
 
-        if not project_files:
-            return AnalysisResult(summary=self.summary, candidates=[])
+            if not project_files:
+                return AnalysisResult(
+                    summary=self.summary,
+                    candidates=[],
+                    source_repo_url=self.source_repo_url,
+                )
 
-        # Build the codebase summary (always runs)
-        self._build_summary(project_files)
+            # Build the codebase summary (always runs)
+            self._build_summary(project_files)
 
-        # Phase 1: File-level heuristic analysis (always runs)
-        self._analyze_file_structure(project_files)
+            # Phase 1: File-level heuristic analysis (always runs)
+            self._analyze_file_structure(project_files)
 
-        # Phase 2: Code-level analysis (standard and deep)
-        if depth in ("standard", "deep"):
-            self._analyze_code_patterns(project_files)
-            self._score_candidates()
+            # Phase 2: Code-level analysis (standard and deep)
+            if depth in ("standard", "deep"):
+                self._analyze_code_patterns(project_files)
+                self._score_candidates()
 
-        # Phase 3: LLM-assisted analysis (deep only)
-        if depth == "deep":
-            self._analyze_with_llm(project_files)
+            # Phase 3: LLM-assisted analysis (deep only)
+            if depth == "deep":
+                self._analyze_with_llm(project_files)
 
-        # Add the whole-codebase candidate
-        self._add_whole_codebase_candidate(project_files)
+            # Add the whole-codebase candidate
+            self._add_whole_codebase_candidate(project_files)
 
-        sorted_candidates = sorted(
-            self.candidates, key=lambda c: c.overall_score, reverse=True
-        )
-        return AnalysisResult(summary=self.summary, candidates=sorted_candidates)
+            # Normalize all source_files to relative paths so temp clone
+            # directories never leak into library metadata.
+            self._relativize_source_paths()
+
+            sorted_candidates = sorted(
+                self.candidates, key=lambda c: c.overall_score, reverse=True
+            )
+            return AnalysisResult(
+                summary=self.summary,
+                candidates=sorted_candidates,
+                source_repo_url=self.source_repo_url,
+            )
+        finally:
+            # Clean up temporary clone directory (no-op for local repos)
+            self._handle.cleanup()
+
+    # ------------------------------------------------------------------
+    # Path normalisation
+    # ------------------------------------------------------------------
+
+    def _relativize_source_paths(self) -> None:
+        """Convert absolute source_files on every candidate to repo-relative paths."""
+        repo_root = str(self.repo_path)
+        for candidate in self.candidates:
+            relative: list[str] = []
+            for fp in candidate.source_files:
+                try:
+                    rel = str(Path(fp).relative_to(repo_root))
+                except ValueError:
+                    # Already relative or from a different root — keep as-is
+                    rel = fp
+                relative.append(rel)
+            candidate.source_files = relative
 
     # ------------------------------------------------------------------
     # Codebase summary
@@ -461,7 +504,10 @@ class RepoAnalyzer:
                 ExtractionCandidate(
                     name=name,
                     description=f"Utility module: {name}",
-                    source_files=[str(f) for f in files],
+                    source_files=[
+                        str(f.relative_to(self.repo_path))
+                        for f in files
+                    ],
                     entry_points=[f.stem for f in files],
                     tags=["utility", "auto-detected"],
                 )
@@ -521,7 +567,9 @@ class RepoAnalyzer:
         """Add a special candidate representing the entire codebase."""
         from ale.ir.models import SymbolKind, Visibility
 
-        all_files = [str(f) for f in project_files]
+        all_files = [
+            str(f.relative_to(self.repo_path)) for f in project_files
+        ]
         all_entry_points: list[str] = []
         all_symbols: list[dict] = []
 
