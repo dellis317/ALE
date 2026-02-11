@@ -122,6 +122,33 @@ async def search_libraries(
 
 
 @router.get(
+    "/{name}/versions",
+    response_model=list[LibraryEntryResponse],
+    summary="List all versions of a library",
+)
+async def list_versions(name: str):
+    """List all versions of a library by name.
+
+    Returns all versions found in the registry index, sorted by version string.
+    """
+    reg = _get_registry()
+    # Find all entries whose key starts with "name@"
+    matching_keys = sorted(
+        k for k in reg._index if k.startswith(f"{name}@")
+    )
+    if not matching_keys:
+        raise HTTPException(
+            status_code=404, detail=f"No versions found for library '{name}'"
+        )
+    entries = []
+    for key in matching_keys:
+        data = reg._index[key]
+        from ale.registry.local_registry import _dict_to_entry
+        entries.append(_entry_to_response(_dict_to_entry(data)))
+    return entries
+
+
+@router.get(
     "/{name}",
     response_model=LibraryEntryResponse,
     summary="Get latest version of a library",

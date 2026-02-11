@@ -54,6 +54,10 @@ def _candidate_to_response(candidate) -> CandidateResponse:
         estimated_instruction_steps=candidate.estimated_instruction_steps,
         dependencies_external=candidate.dependencies_external,
         dependencies_internal=candidate.dependencies_internal,
+        context_summary=getattr(candidate, "context_summary", ""),
+        symbols=getattr(candidate, "symbols", []),
+        callers=getattr(candidate, "callers", []),
+        callees=getattr(candidate, "callees", []),
     )
 
 

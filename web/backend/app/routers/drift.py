@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
 from ale.sync.drift import DriftDetector
 from ale.sync.provenance import ProvenanceStore
@@ -11,6 +11,7 @@ from web.backend.app.models.api import (
     DriftCheckAllRequest,
     DriftCheckRequest,
     DriftReportResponse,
+    DriftSummaryResponse,
     ProvenanceRecordResponse,
 )
 
@@ -124,3 +125,39 @@ async def get_library_provenance(repo_path: str, library_name: str):
         raise HTTPException(status_code=400, detail=str(exc))
 
     return [_provenance_to_response(r) for r in records]
+
+
+@router.get(
+    "/api/drift/summary",
+    response_model=DriftSummaryResponse,
+    summary="Get aggregate drift stats for a repo",
+)
+async def drift_summary(repo_path: str = Query(...)):
+    """Get aggregate drift statistics for a repository.
+
+    Returns total libraries scanned, clean vs drifted counts,
+    and breakdown by drift type.
+    """
+    if not repo_path:
+        raise HTTPException(status_code=400, detail="repo_path is required")
+
+    try:
+        detector = DriftDetector(repo_path)
+        reports = detector.check_all()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    clean_count = sum(1 for r in reports if not r.has_drift)
+    drifted_count = sum(1 for r in reports if r.has_drift)
+
+    by_type: dict[str, int] = {}
+    for r in reports:
+        for dt in r.drift_types:
+            by_type[dt] = by_type.get(dt, 0) + 1
+
+    return DriftSummaryResponse(
+        total_libraries=len(reports),
+        clean_count=clean_count,
+        drifted_count=drifted_count,
+        by_type=by_type,
+    )
