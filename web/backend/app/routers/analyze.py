@@ -9,7 +9,9 @@ from ale.generators.library_generator import LibraryGenerator
 
 from web.backend.app.models.api import (
     AnalyzeRequest,
+    AnalyzeResponse,
     CandidateResponse,
+    CodebaseSummaryResponse,
     GenerateRequest,
     GenerateResponse,
     ScoreDimensionResponse,
@@ -61,17 +63,39 @@ def _candidate_to_response(candidate) -> CandidateResponse:
     )
 
 
+def _summary_to_response(summary) -> CodebaseSummaryResponse:
+    """Convert a CodebaseSummary dataclass to a Pydantic response."""
+    return CodebaseSummaryResponse(
+        total_files=summary.total_files,
+        total_lines=summary.total_lines,
+        files_by_language=summary.files_by_language,
+        total_modules=summary.total_modules,
+        total_functions=summary.total_functions,
+        total_classes=summary.total_classes,
+        total_constants=summary.total_constants,
+        external_packages=summary.external_packages,
+        internal_module_count=summary.internal_module_count,
+        docstring_coverage=summary.docstring_coverage,
+        type_hint_coverage=summary.type_hint_coverage,
+        has_tests=summary.has_tests,
+        has_ci_config=summary.has_ci_config,
+        purpose=summary.purpose,
+        top_level_packages=summary.top_level_packages,
+        key_capabilities=summary.key_capabilities,
+    )
+
+
 @router.post(
     "/api/analyze",
-    response_model=list[CandidateResponse],
+    response_model=AnalyzeResponse,
     summary="Analyze a repository for extraction candidates",
 )
 async def analyze_repo(request: AnalyzeRequest):
-    """Scan a repository and return ranked extraction candidates.
+    """Scan a repository and return a codebase summary with ranked candidates.
 
     The ``depth`` parameter controls how thorough the analysis is:
     - ``quick``: file-level heuristics only
-    - ``standard``: includes AST analysis
+    - ``standard``: includes AST analysis and real scoring
     - ``deep``: includes LLM-assisted analysis
     """
     if not request.repo_path:
@@ -79,11 +103,14 @@ async def analyze_repo(request: AnalyzeRequest):
 
     try:
         analyzer = RepoAnalyzer(request.repo_path)
-        candidates = analyzer.analyze(depth=request.depth)
+        result = analyzer.analyze(depth=request.depth)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
-    return [_candidate_to_response(c) for c in candidates]
+    return AnalyzeResponse(
+        summary=_summary_to_response(result.summary),
+        candidates=[_candidate_to_response(c) for c in result.candidates],
+    )
 
 
 @router.post(

@@ -201,6 +201,36 @@ class CandidateResponse(BaseModel):
     callees: list[str] = Field(default_factory=list)
 
 
+class CodebaseSummaryResponse(BaseModel):
+    """Summary of the analyzed codebase."""
+
+    total_files: int = 0
+    total_lines: int = 0
+    files_by_language: dict[str, int] = Field(default_factory=dict)
+    total_modules: int = 0
+    total_functions: int = 0
+    total_classes: int = 0
+    total_constants: int = 0
+    external_packages: list[str] = Field(default_factory=list)
+    internal_module_count: int = 0
+    docstring_coverage: float = 0.0
+    type_hint_coverage: float = 0.0
+    has_tests: bool = False
+    has_ci_config: bool = False
+    purpose: str = ""
+    top_level_packages: list[str] = Field(default_factory=list)
+    key_capabilities: list[str] = Field(default_factory=list)
+
+
+class AnalyzeResponse(BaseModel):
+    """Full analysis response with codebase summary and candidates."""
+
+    summary: CodebaseSummaryResponse = Field(
+        default_factory=CodebaseSummaryResponse
+    )
+    candidates: list[CandidateResponse] = Field(default_factory=list)
+
+
 class AnalyzeRequest(BaseModel):
     """Request body for repo analysis."""
 

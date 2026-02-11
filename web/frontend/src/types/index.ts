@@ -224,6 +224,32 @@ export interface EnhancedCandidate extends Candidate {
   callees: string[];
 }
 
+// Codebase summary from analyzer
+export interface CodebaseSummary {
+  total_files: number;
+  total_lines: number;
+  files_by_language: Record<string, number>;
+  total_modules: number;
+  total_functions: number;
+  total_classes: number;
+  total_constants: number;
+  external_packages: string[];
+  internal_module_count: number;
+  docstring_coverage: number;
+  type_hint_coverage: number;
+  has_tests: boolean;
+  has_ci_config: boolean;
+  purpose: string;
+  top_level_packages: string[];
+  key_capabilities: string[];
+}
+
+// Full analysis result (summary + candidates)
+export interface AnalyzeResult {
+  summary: CodebaseSummary;
+  candidates: Candidate[];
+}
+
 // Conformance history
 export interface ConformanceHistoryEntry {
   library_name: string;
