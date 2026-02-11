@@ -557,3 +557,40 @@ export interface ModerationErrorDetail {
   violation_type: string;
   is_locked: boolean;
 }
+
+// Library Update Detection types
+
+export interface FileChange {
+  path: string;
+  insertions: number;
+  deletions: number;
+  status: string; // A(dded), M(odified), D(eleted), R(enamed)
+}
+
+export interface UpdateCheckResult {
+  has_updates: boolean;
+  severity: 'none' | 'patch' | 'minor' | 'major';
+  severity_reason: string;
+
+  current_commit: string;
+  latest_commit: string;
+  new_commit_count: number;
+  commit_messages: string[];
+
+  files_changed: number;
+  total_insertions: number;
+  total_deletions: number;
+  changed_files: FileChange[];
+
+  source_files_affected: number;
+  source_files_changed: string[];
+
+  new_tags: string[];
+  latest_tag: string;
+
+  summary: string;
+  change_notes: string[];
+
+  library_id: string;
+  library_name: string;
+}

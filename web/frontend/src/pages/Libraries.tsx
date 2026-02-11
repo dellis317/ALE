@@ -10,15 +10,26 @@ import {
   GitBranch,
   FileText,
   ChevronRight,
+  RefreshCw,
 } from 'lucide-react';
-import { listGeneratedLibraries, deleteGeneratedLibrary } from '../api/client';
-import type { GeneratedLibrary } from '../types';
+import {
+  listGeneratedLibraries,
+  deleteGeneratedLibrary,
+  checkLibraryUpdates,
+  updateLibrary,
+  createLibraryFromLatest,
+} from '../api/client';
+import type { GeneratedLibrary, UpdateCheckResult } from '../types';
 import Badge from '../components/Badge';
 import EmptyState from '../components/EmptyState';
+import UpdateCheckModal from '../components/UpdateCheckModal';
 
 export default function Libraries() {
   const queryClient = useQueryClient();
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [checkingId, setCheckingId] = useState<string | null>(null);
+  const [updateCheckResult, setUpdateCheckResult] = useState<UpdateCheckResult | null>(null);
+  const [checkError, setCheckError] = useState<string | null>(null);
 
   const librariesQuery = useQuery({
     queryKey: ['generated-libraries'],
@@ -36,6 +47,36 @@ export default function Libraries() {
     },
   });
 
+  const checkUpdatesMutation = useMutation({
+    mutationFn: (id: string) => checkLibraryUpdates(id),
+    onSuccess: (data) => {
+      setCheckingId(null);
+      setUpdateCheckResult(data);
+      setCheckError(null);
+    },
+    onError: (err) => {
+      setCheckingId(null);
+      setCheckError(err instanceof Error ? err.message : 'Failed to check for updates');
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: (id: string) => updateLibrary(id),
+    onSuccess: () => {
+      setUpdateCheckResult(null);
+      queryClient.invalidateQueries({ queryKey: ['generated-libraries'] });
+    },
+  });
+
+  const createFromLatestMutation = useMutation({
+    mutationFn: ({ id, newName }: { id: string; newName: string }) =>
+      createLibraryFromLatest(id, newName),
+    onSuccess: () => {
+      setUpdateCheckResult(null);
+      queryClient.invalidateQueries({ queryKey: ['generated-libraries'] });
+    },
+  });
+
   const libraries = librariesQuery.data ?? [];
 
   const countSections = (lib: GeneratedLibrary): number => {
@@ -50,6 +91,14 @@ export default function Libraries() {
     return count;
   };
 
+  const handleCheckUpdates = (e: React.MouseEvent, libId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setCheckingId(libId);
+    setCheckError(null);
+    checkUpdatesMutation.mutate(libId);
+  };
+
   return (
     <div>
       {/* Header */}
@@ -62,6 +111,16 @@ export default function Libraries() {
           Browse and review hierarchical agentic library documents generated from analysis
         </p>
       </div>
+
+      {/* Check error toast */}
+      {checkError && (
+        <div className="fixed top-4 right-4 z-50 flex items-center gap-2 px-4 py-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm shadow-lg">
+          <span>{checkError}</span>
+          <button onClick={() => setCheckError(null)} className="text-red-400 hover:text-red-600 ml-2">
+            &times;
+          </button>
+        </div>
+      )}
 
       {/* Loading */}
       {librariesQuery.isLoading && (
@@ -155,8 +214,22 @@ export default function Libraries() {
                 </div>
               </Link>
 
-              {/* Delete button */}
-              <div className="px-5 py-3 border-t border-gray-100 flex justify-end">
+              {/* Actions bar */}
+              <div className="px-5 py-3 border-t border-gray-100 flex items-center justify-between">
+                <button
+                  onClick={(e) => handleCheckUpdates(e, lib.id)}
+                  disabled={checkingId === lib.id}
+                  className="flex items-center gap-1.5 text-xs text-indigo-500 hover:text-indigo-700 transition-colors disabled:opacity-50"
+                  title="Check source repo for updates"
+                >
+                  {checkingId === lib.id ? (
+                    <Loader2 size={12} className="animate-spin" />
+                  ) : (
+                    <RefreshCw size={12} />
+                  )}
+                  Check for Updates
+                </button>
+
                 <button
                   onClick={() => {
                     setDeletingId(lib.id);
@@ -177,6 +250,29 @@ export default function Libraries() {
             </div>
           ))}
         </div>
+      )}
+
+      {/* Update Check Modal */}
+      {updateCheckResult && (
+        <UpdateCheckModal
+          result={updateCheckResult}
+          onClose={() => setUpdateCheckResult(null)}
+          onUpdate={() => {
+            if (updateCheckResult.library_id) {
+              updateMutation.mutate(updateCheckResult.library_id);
+            }
+          }}
+          onCreateFromLatest={(newName) => {
+            if (updateCheckResult.library_id) {
+              createFromLatestMutation.mutate({
+                id: updateCheckResult.library_id,
+                newName,
+              });
+            }
+          }}
+          isUpdating={updateMutation.isPending}
+          isCreating={createFromLatestMutation.isPending}
+        />
       )}
     </div>
   );
