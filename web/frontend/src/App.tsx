@@ -17,6 +17,7 @@ import LLMDashboard from './pages/LLMDashboard';
 import Policies from './pages/Policies';
 import Approvals from './pages/Approvals';
 import SecurityDashboard from './pages/SecurityDashboard';
+import SetupWizard from './pages/SetupWizard';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -34,6 +35,7 @@ function App() {
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={<Login />} />
+            <Route path="/setup" element={<SetupWizard />} />
             <Route path="/" element={<Layout />}>
               <Route index element={<Registry />} />
               <Route path="library/:name/:version?" element={<LibraryDetail />} />
