@@ -1,6 +1,9 @@
-import { NavLink, Outlet } from 'react-router-dom';
-import { Package, Search, ShieldCheck, Activity, Network, Wand2, Settings, Building2, Sparkles, Shield, ClipboardCheck, Lock } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { Package, Search, ShieldCheck, Activity, Network, Wand2, Settings, Building2, Sparkles, Shield, ClipboardCheck, Lock, Compass } from 'lucide-react';
 import UserMenu from './UserMenu';
+import DeploymentConfigGuide, { hasSeenDeployGuide } from './DeploymentConfigGuide';
+import { hasCompletedSetup } from '../pages/SetupWizard';
 
 const navItems = [
   { to: '/', label: 'Registry', icon: Package, end: true },
@@ -17,9 +20,28 @@ const navItems = [
   { to: '/security', label: 'Security', icon: Lock },
 ];
 
+const wizardNavItem = { to: '/setup', label: 'Setup Wizard', icon: Compass };
+
 export default function Layout() {
+  const navigate = useNavigate();
+  const [checkedSetup, setCheckedSetup] = useState(false);
+  const [showDeployGuide, setShowDeployGuide] = useState(() => !hasSeenDeployGuide());
+
+  useEffect(() => {
+    if (!checkedSetup) {
+      setCheckedSetup(true);
+      if (!hasCompletedSetup()) {
+        navigate('/setup', { replace: true });
+      }
+    }
+  }, [checkedSetup, navigate]);
+
   return (
     <div className="flex h-screen bg-gray-50">
+      {/* First-deploy configuration guide popup */}
+      {showDeployGuide && (
+        <DeploymentConfigGuide onClose={() => setShowDeployGuide(false)} />
+      )}
       {/* Sidebar */}
       <aside className="w-64 flex-shrink-0 bg-[#0f172a] text-white flex flex-col">
         {/* Logo */}
@@ -29,7 +51,7 @@ export default function Layout() {
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 px-3 py-4 space-y-1">
+        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
           {navItems.map(({ to, label, icon: Icon, end }) => (
             <NavLink
               key={to}
@@ -47,6 +69,23 @@ export default function Layout() {
               {label}
             </NavLink>
           ))}
+
+          {/* Separator + Setup Wizard */}
+          <div className="pt-2 mt-2 border-t border-white/10">
+            <NavLink
+              to={wizardNavItem.to}
+              className={({ isActive }) =>
+                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                  isActive
+                    ? 'bg-indigo-600 text-white'
+                    : 'text-slate-300 hover:bg-white/10 hover:text-white'
+                }`
+              }
+            >
+              <wizardNavItem.icon size={18} />
+              {wizardNavItem.label}
+            </NavLink>
+          </div>
         </nav>
 
         {/* User menu / Footer */}
