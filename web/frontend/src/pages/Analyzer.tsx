@@ -9,44 +9,245 @@ import {
   Tag,
   Flag,
   Lightbulb,
+  BarChart3,
+  Package,
+  Code,
+  FileText,
+  CheckCircle2,
+  XCircle,
+  Globe,
 } from 'lucide-react';
 import { analyzeRepo } from '../api/client';
-import type { Candidate } from '../types';
+import type { Candidate, AnalyzeResult, CodebaseSummary } from '../types';
 import ScoreBar from '../components/ScoreBar';
 import Badge from '../components/Badge';
 import EmptyState from '../components/EmptyState';
 
-function CandidateRow({ candidate, rank }: { candidate: Candidate; rank: number }) {
+function CodebaseSummaryCard({ summary }: { summary: CodebaseSummary }) {
+  const [expanded, setExpanded] = useState(false);
+  const languages = Object.entries(summary.files_by_language).sort(
+    ([, a], [, b]) => b - a
+  );
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-6">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full text-left px-6 py-5 cursor-pointer hover:bg-gray-50/50 transition-colors"
+      >
+        <div className="flex items-start gap-4">
+          <div className="w-10 h-10 rounded-lg bg-indigo-50 flex items-center justify-center flex-shrink-0">
+            <BarChart3 size={20} className="text-indigo-600" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="text-lg font-semibold text-gray-900 mb-1">
+              Codebase Summary
+            </h3>
+            <p className="text-sm text-gray-600">{summary.purpose}</p>
+            <div className="flex flex-wrap gap-4 mt-3 text-sm text-gray-700">
+              <span className="flex items-center gap-1.5">
+                <FileText size={14} className="text-gray-400" />
+                {summary.total_files.toLocaleString()} files
+              </span>
+              <span className="flex items-center gap-1.5">
+                <Code size={14} className="text-gray-400" />
+                {summary.total_lines.toLocaleString()} lines
+              </span>
+              <span className="flex items-center gap-1.5">
+                <Package size={14} className="text-gray-400" />
+                {summary.total_functions} functions, {summary.total_classes} classes
+              </span>
+            </div>
+          </div>
+          <span className="text-gray-400 mt-2">
+            {expanded ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+          </span>
+        </div>
+      </button>
+
+      {expanded && (
+        <div className="px-6 pb-6 border-t border-gray-100">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-5">
+            {/* Languages breakdown */}
+            <div>
+              <h4 className="text-sm font-semibold text-gray-700 mb-3">
+                Languages
+              </h4>
+              <div className="space-y-2">
+                {languages.map(([lang, count]) => (
+                  <div key={lang} className="flex items-center justify-between text-sm">
+                    <span className="text-gray-700 capitalize">{lang}</span>
+                    <span className="text-gray-500">
+                      {count} file{count !== 1 ? 's' : ''}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Quality indicators */}
+            <div>
+              <h4 className="text-sm font-semibold text-gray-700 mb-3">
+                Quality Indicators
+              </h4>
+              <div className="space-y-3">
+                <ScoreBar
+                  score={summary.docstring_coverage}
+                  label="Documentation"
+                  size="sm"
+                />
+                <ScoreBar
+                  score={summary.type_hint_coverage}
+                  label="Type Hints"
+                  size="sm"
+                />
+                <div className="flex items-center gap-2 text-sm">
+                  {summary.has_tests ? (
+                    <CheckCircle2 size={14} className="text-emerald-500" />
+                  ) : (
+                    <XCircle size={14} className="text-gray-300" />
+                  )}
+                  <span className={summary.has_tests ? 'text-gray-700' : 'text-gray-400'}>
+                    Test suite
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 text-sm">
+                  {summary.has_ci_config ? (
+                    <CheckCircle2 size={14} className="text-emerald-500" />
+                  ) : (
+                    <XCircle size={14} className="text-gray-300" />
+                  )}
+                  <span className={summary.has_ci_config ? 'text-gray-700' : 'text-gray-400'}>
+                    CI/CD configured
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Key capabilities */}
+            <div>
+              <h4 className="text-sm font-semibold text-gray-700 mb-3">
+                Detected Capabilities
+              </h4>
+              {summary.key_capabilities.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {summary.key_capabilities.map((cap) => (
+                    <Badge key={cap} label={cap} variant="info" />
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-400">No capabilities detected</p>
+              )}
+            </div>
+          </div>
+
+          {/* External packages */}
+          {summary.external_packages.length > 0 && (
+            <div className="mt-5">
+              <h4 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
+                <Globe size={14} />
+                External Dependencies ({summary.external_packages.length})
+              </h4>
+              <div className="flex flex-wrap gap-1.5">
+                {summary.external_packages.map((pkg) => (
+                  <span
+                    key={pkg}
+                    className="text-xs font-mono text-gray-600 bg-gray-50 px-2 py-1 rounded"
+                  >
+                    {pkg}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Top-level packages */}
+          {summary.top_level_packages.length > 0 && (
+            <div className="mt-5">
+              <h4 className="text-sm font-semibold text-gray-700 mb-2">
+                Top-Level Packages
+              </h4>
+              <div className="flex flex-wrap gap-1.5">
+                {summary.top_level_packages.map((pkg) => (
+                  <span
+                    key={pkg}
+                    className="text-xs font-mono text-gray-600 bg-gray-50 px-2 py-1 rounded"
+                  >
+                    {pkg}/
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CandidateRow({
+  candidate,
+  rank,
+  isWholeCodebase,
+}: {
+  candidate: Candidate;
+  rank: number;
+  isWholeCodebase: boolean;
+}) {
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+    <div
+      className={`rounded-xl border overflow-hidden ${
+        isWholeCodebase
+          ? 'bg-gradient-to-r from-indigo-50/50 to-purple-50/50 border-indigo-200'
+          : 'bg-white border-gray-200'
+      }`}
+    >
       <button
         onClick={() => setExpanded(!expanded)}
         className="w-full text-left px-5 py-4 cursor-pointer hover:bg-gray-50/50 transition-colors"
       >
         <div className="flex items-start gap-4">
           {/* Rank */}
-          <div className="w-8 h-8 rounded-full bg-indigo-50 flex items-center justify-center flex-shrink-0">
-            <span className="text-sm font-bold text-indigo-600">#{rank}</span>
+          <div
+            className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+              isWholeCodebase
+                ? 'bg-gradient-to-br from-indigo-500 to-purple-600'
+                : 'bg-indigo-50'
+            }`}
+          >
+            {isWholeCodebase ? (
+              <Globe size={14} className="text-white" />
+            ) : (
+              <span className="text-sm font-bold text-indigo-600">#{rank}</span>
+            )}
           </div>
 
           {/* Info */}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1 flex-wrap">
-              <h3 className="font-semibold text-gray-900">{candidate.name}</h3>
+              <h3 className="font-semibold text-gray-900">
+                {isWholeCodebase ? 'Entire Codebase' : candidate.name}
+              </h3>
               <span className="text-xs text-gray-500">
                 {candidate.source_files.length} file{candidate.source_files.length !== 1 ? 's' : ''}
               </span>
+              {isWholeCodebase && (
+                <Badge label="Full Repository" variant="info" />
+              )}
             </div>
-            <p className="text-sm text-gray-600 line-clamp-1">{candidate.description}</p>
+            <p className="text-sm text-gray-600 line-clamp-2">{candidate.description}</p>
 
             {/* Tags */}
-            {candidate.tags.length > 0 && (
+            {!isWholeCodebase && candidate.tags.length > 0 && (
               <div className="flex flex-wrap gap-1.5 mt-2">
-                {candidate.tags.slice(0, 6).map((tag) => (
-                  <Badge key={tag} label={tag} variant="info" />
-                ))}
+                {candidate.tags
+                  .filter((t) => t !== 'whole-codebase' && t !== 'full-repository')
+                  .slice(0, 6)
+                  .map((tag) => (
+                    <Badge key={tag} label={tag} variant="info" />
+                  ))}
                 {candidate.tags.length > 6 && (
                   <Badge label={`+${candidate.tags.length - 6}`} variant="default" />
                 )}
@@ -73,18 +274,33 @@ function CandidateRow({ candidate, rank }: { candidate: Candidate; rank: number 
             <div>
               <h4 className="text-sm font-semibold text-gray-700 mb-3">Score Breakdown</h4>
               <div className="space-y-3">
-                <ScoreBar score={candidate.isolation_score} label="Isolation" size="sm" />
-                <ScoreBar score={candidate.reuse_score} label="Reuse" size="sm" />
-                <ScoreBar score={candidate.complexity_score} label="Complexity" size="sm" />
-                <ScoreBar score={candidate.clarity_score} label="Clarity" size="sm" />
-                {candidate.scoring.dimensions.map((dim) => (
-                  <ScoreBar
-                    key={dim.name}
-                    score={dim.score}
-                    label={`${dim.name} (w:${dim.weight})`}
-                    size="sm"
-                  />
-                ))}
+                {candidate.scoring.dimensions.length > 0 ? (
+                  candidate.scoring.dimensions.map((dim) => (
+                    <div key={dim.name}>
+                      <ScoreBar
+                        score={dim.score}
+                        label={`${dim.name.replace(/_/g, ' ')} (w:${dim.weight})`}
+                        size="sm"
+                      />
+                      {dim.reasons.length > 0 && (
+                        <ul className="mt-1 ml-2">
+                          {dim.reasons.slice(0, 2).map((r, i) => (
+                            <li key={i} className="text-xs text-gray-500">
+                              {r}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <>
+                    <ScoreBar score={candidate.isolation_score} label="Isolation" size="sm" />
+                    <ScoreBar score={candidate.reuse_score} label="Reuse" size="sm" />
+                    <ScoreBar score={candidate.complexity_score} label="Complexity" size="sm" />
+                    <ScoreBar score={candidate.clarity_score} label="Clarity" size="sm" />
+                  </>
+                )}
               </div>
             </div>
 
@@ -123,18 +339,24 @@ function CandidateRow({ candidate, rank }: { candidate: Candidate; rank: number 
                 </div>
               )}
 
-              {/* Source files */}
+              {/* Source files (capped for whole-codebase) */}
               <div>
                 <h4 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1">
                   <FileCode2 size={14} />
                   Source Files
+                  {isWholeCodebase && ` (${candidate.source_files.length} total)`}
                 </h4>
                 <ul className="space-y-1">
-                  {candidate.source_files.map((file) => (
+                  {candidate.source_files.slice(0, isWholeCodebase ? 10 : 50).map((file) => (
                     <li key={file} className="text-xs font-mono text-gray-600 bg-gray-50 px-2 py-1 rounded">
                       {file}
                     </li>
                   ))}
+                  {isWholeCodebase && candidate.source_files.length > 10 && (
+                    <li className="text-xs text-gray-500 italic px-2 py-1">
+                      ... and {candidate.source_files.length - 10} more files
+                    </li>
+                  )}
                 </ul>
               </div>
 
@@ -144,13 +366,19 @@ function CandidateRow({ candidate, rank }: { candidate: Candidate; rank: number 
                   <h4 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1">
                     <Tag size={14} />
                     Entry Points
+                    {isWholeCodebase && ` (showing top ${Math.min(candidate.entry_points.length, 15)})`}
                   </h4>
                   <ul className="space-y-1">
-                    {candidate.entry_points.map((ep) => (
+                    {candidate.entry_points.slice(0, isWholeCodebase ? 15 : 50).map((ep) => (
                       <li key={ep} className="text-xs font-mono text-gray-600 bg-gray-50 px-2 py-1 rounded">
                         {ep}
                       </li>
                     ))}
+                    {isWholeCodebase && candidate.entry_points.length > 15 && (
+                      <li className="text-xs text-gray-500 italic px-2 py-1">
+                        ... and {candidate.entry_points.length - 15} more entry points
+                      </li>
+                    )}
                   </ul>
                 </div>
               )}
@@ -169,6 +397,18 @@ export default function Analyzer() {
   const mutation = useMutation({
     mutationFn: () => analyzeRepo(repoPath, depth),
   });
+
+  const result: AnalyzeResult | undefined = mutation.data;
+  const candidates = result?.candidates ?? [];
+  const summary = result?.summary;
+
+  // Separate whole-codebase candidate from component candidates
+  const wholeCodebaseCandidate = candidates.find(
+    (c) => c.name === '__whole_codebase__'
+  );
+  const componentCandidates = candidates.filter(
+    (c) => c.name !== '__whole_codebase__'
+  );
 
   return (
     <div>
@@ -268,25 +508,51 @@ export default function Analyzer() {
       )}
 
       {/* Results */}
-      {mutation.data && !mutation.isPending && (
+      {result && !mutation.isPending && (
         <div>
+          {/* Codebase summary */}
+          {summary && summary.total_files > 0 && (
+            <CodebaseSummaryCard summary={summary} />
+          )}
+
+          {/* Whole codebase option */}
+          {wholeCodebaseCandidate && (
+            <div className="mb-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                <Globe size={18} className="text-indigo-600" />
+                Full Repository Option
+              </h2>
+              <CandidateRow
+                candidate={wholeCodebaseCandidate}
+                rank={0}
+                isWholeCodebase
+              />
+            </div>
+          )}
+
+          {/* Component candidates */}
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold text-gray-900">
-              Candidates Found ({mutation.data.length})
+              Component Candidates ({componentCandidates.length})
             </h2>
             <span className="text-xs text-gray-500">Ranked by overall score</span>
           </div>
 
-          {mutation.data.length === 0 ? (
+          {componentCandidates.length === 0 ? (
             <EmptyState
-              title="No candidates found"
-              description="No extractable library candidates were found in this repository. Try a different path or depth setting."
+              title="No component candidates found"
+              description="No extractable library candidates were found in this repository. Try a different path or depth setting. You can still use the full repository option above."
               icon={Search}
             />
           ) : (
             <div className="space-y-3">
-              {mutation.data.map((candidate, i) => (
-                <CandidateRow key={candidate.name} candidate={candidate} rank={i + 1} />
+              {componentCandidates.map((candidate, i) => (
+                <CandidateRow
+                  key={candidate.name}
+                  candidate={candidate}
+                  rank={i + 1}
+                  isWholeCodebase={false}
+                />
               ))}
             </div>
           )}

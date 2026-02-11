@@ -3,6 +3,7 @@ import type {
   SearchResult,
   ConformanceResult,
   Candidate,
+  AnalyzeResult,
   DriftReport,
   ProvenanceRecord,
   IRModule,
@@ -128,8 +129,8 @@ export async function getSchema(): Promise<unknown> {
 export async function analyzeRepo(
   repoPath: string,
   depth?: string
-): Promise<Candidate[]> {
-  return request<Candidate[]>('/api/analyze', {
+): Promise<AnalyzeResult> {
+  return request<AnalyzeResult>('/api/analyze', {
     method: 'POST',
     body: JSON.stringify({
       repo_path: repoPath,

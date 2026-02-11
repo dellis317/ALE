@@ -22,7 +22,7 @@ import {
   Eye,
 } from 'lucide-react';
 import { analyzeRepo, generateLibrary } from '../api/client';
-import type { Candidate } from '../types';
+import type { Candidate, AnalyzeResult } from '../types';
 import ScoreBar from '../components/ScoreBar';
 import Badge from '../components/Badge';
 
@@ -67,8 +67,8 @@ export default function SetupWizard() {
 
   const analyzeMutation = useMutation({
     mutationFn: () => analyzeRepo(repoPath, depth),
-    onSuccess: (data) => {
-      setCandidates(data);
+    onSuccess: (data: AnalyzeResult) => {
+      setCandidates(data.candidates);
     },
   });
 
@@ -454,33 +454,49 @@ export default function SetupWizard() {
             {/* Candidates list */}
             {!analyzeMutation.isPending && candidates.length > 0 && (
               <div className="space-y-3 mb-8">
-                {candidates.map((candidate, i) => (
+                {candidates.map((candidate, i) => {
+                  const isWhole = candidate.name === '__whole_codebase__';
+                  const displayName = isWhole ? 'Entire Codebase' : candidate.name;
+                  return (
                   <button
                     key={candidate.name}
                     onClick={() => handleSelectAndGenerate(candidate)}
-                    className={`w-full text-left bg-white rounded-xl border-2 p-5 transition-all shadow-sm hover:shadow-md ${
-                      selectedCandidate?.name === candidate.name
-                        ? 'border-indigo-500 ring-2 ring-indigo-100'
-                        : 'border-gray-200 hover:border-indigo-300'
+                    className={`w-full text-left rounded-xl border-2 p-5 transition-all shadow-sm hover:shadow-md ${
+                      isWhole
+                        ? selectedCandidate?.name === candidate.name
+                          ? 'bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-500 ring-2 ring-indigo-100'
+                          : 'bg-gradient-to-r from-indigo-50/50 to-purple-50/50 border-indigo-200 hover:border-indigo-400'
+                        : selectedCandidate?.name === candidate.name
+                          ? 'bg-white border-indigo-500 ring-2 ring-indigo-100'
+                          : 'bg-white border-gray-200 hover:border-indigo-300'
                     }`}
                   >
                     <div className="flex items-start gap-4">
-                      <div className="w-8 h-8 rounded-full bg-indigo-50 flex items-center justify-center flex-shrink-0">
-                        <span className="text-sm font-bold text-indigo-600">#{i + 1}</span>
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                        isWhole
+                          ? 'bg-gradient-to-br from-indigo-500 to-purple-600'
+                          : 'bg-indigo-50'
+                      }`}>
+                        {isWhole ? (
+                          <Package size={14} className="text-white" />
+                        ) : (
+                          <span className="text-sm font-bold text-indigo-600">#{i + 1}</span>
+                        )}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
-                          <h3 className="font-semibold text-gray-900">{candidate.name}</h3>
+                          <h3 className="font-semibold text-gray-900">{displayName}</h3>
+                          {isWhole && <Badge label="Full Repository" variant="info" />}
                           {selectedCandidate?.name === candidate.name && (
                             <CheckCircle2 size={16} className="text-indigo-600" />
                           )}
                         </div>
-                        <p className="text-sm text-gray-600 mb-2">{candidate.description}</p>
+                        <p className="text-sm text-gray-600 mb-2 line-clamp-2">{candidate.description}</p>
                         <div className="flex items-center gap-4">
                           <div className="w-28">
                             <ScoreBar score={candidate.overall_score} label="Score" size="sm" />
                           </div>
-                          {candidate.tags.length > 0 && (
+                          {!isWhole && candidate.tags.length > 0 && (
                             <div className="flex flex-wrap gap-1">
                               {candidate.tags.slice(0, 4).map((tag) => (
                                 <Badge key={tag} label={tag} variant="info" />
@@ -502,7 +518,8 @@ export default function SetupWizard() {
                       />
                     </div>
                   </button>
-                ))}
+                  );
+                })}
               </div>
             )}
 

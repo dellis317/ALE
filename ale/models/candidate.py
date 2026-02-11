@@ -1,4 +1,4 @@
-"""Models for extraction candidates identified during repo analysis.
+"""Models for extraction candidates and codebase summaries.
 
 Implements the 7-dimension scoring system from the architecture doc:
 1. Isolation / Modularity
@@ -13,6 +13,7 @@ Implements the 7-dimension scoring system from the architecture doc:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 
 
 @dataclass
@@ -124,6 +125,29 @@ class ExtractionCandidate:
             f"({len(self.source_files)} files)"
         )
 
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize to a plain dict for API responses."""
+        data: dict[str, Any] = {
+            "name": self.name,
+            "description": self.description,
+            "source_files": self.source_files,
+            "entry_points": self.entry_points,
+            "overall_score": self.overall_score,
+            "isolation_score": self.isolation_score,
+            "reuse_score": self.reuse_score,
+            "complexity_score": self.complexity_score,
+            "clarity_score": self.clarity_score,
+            "tags": self.tags,
+            "estimated_instruction_steps": self.estimated_instruction_steps,
+            "dependencies_external": self.dependencies_external,
+            "dependencies_internal": self.dependencies_internal,
+            "context_summary": self.context_summary,
+            "symbols": self.symbols,
+            "callers": self.callers,
+            "callees": self.callees,
+        }
+        return data
+
     def detailed_report(self) -> str:
         """Full report with dimension breakdown, reasons, and flags."""
         lines = [
@@ -155,3 +179,54 @@ class ExtractionCandidate:
                 lines.append(f"    ! {f}")
 
         return "\n".join(lines)
+
+
+@dataclass
+class CodebaseSummary:
+    """Aggregate summary of an analyzed codebase."""
+
+    # Size metrics
+    total_files: int = 0
+    total_lines: int = 0
+    files_by_language: dict[str, int] = field(default_factory=dict)
+
+    # Structure metrics
+    total_modules: int = 0
+    total_functions: int = 0
+    total_classes: int = 0
+    total_constants: int = 0
+
+    # Dependency metrics
+    external_packages: list[str] = field(default_factory=list)
+    internal_module_count: int = 0
+
+    # Quality indicators
+    docstring_coverage: float = 0.0  # 0.0 - 1.0
+    type_hint_coverage: float = 0.0  # 0.0 - 1.0
+    has_tests: bool = False
+    has_ci_config: bool = False
+
+    # Purpose / description
+    purpose: str = ""
+    top_level_packages: list[str] = field(default_factory=list)
+    key_capabilities: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "total_files": self.total_files,
+            "total_lines": self.total_lines,
+            "files_by_language": self.files_by_language,
+            "total_modules": self.total_modules,
+            "total_functions": self.total_functions,
+            "total_classes": self.total_classes,
+            "total_constants": self.total_constants,
+            "external_packages": self.external_packages,
+            "internal_module_count": self.internal_module_count,
+            "docstring_coverage": self.docstring_coverage,
+            "type_hint_coverage": self.type_hint_coverage,
+            "has_tests": self.has_tests,
+            "has_ci_config": self.has_ci_config,
+            "purpose": self.purpose,
+            "top_level_packages": self.top_level_packages,
+            "key_capabilities": self.key_capabilities,
+        }
