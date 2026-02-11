@@ -1,11 +1,15 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Search, ShieldCheck, Star, Download, Package } from 'lucide-react';
+import { Search, ShieldCheck, Star, Download, Package, ArrowUpDown, ChevronLeft, ChevronRight as ChevronRightIcon, MessageSquareText } from 'lucide-react';
 import { searchRegistry, fetchRegistry } from '../api/client';
 import type { LibraryEntry } from '../types';
 import Badge from '../components/Badge';
 import EmptyState from '../components/EmptyState';
+
+const ITEMS_PER_PAGE = 12;
+
+type SortField = 'name' | 'rating' | 'downloads' | 'last_updated';
 
 function ComplexityBadge({ complexity }: { complexity: string }) {
   const variant =
@@ -17,6 +21,17 @@ function ComplexityBadge({ complexity }: { complexity: string }) {
           ? 'error'
           : 'default';
   return <Badge label={complexity} variant={variant} />;
+}
+
+function StatusBadge({ entry }: { entry: LibraryEntry }) {
+  // Determine status based on quality signals
+  if (!entry.quality.maintained) {
+    return <Badge label="Deprecated" variant="warning" />;
+  }
+  if (entry.quality.download_count === 0 && entry.quality.rating_count === 0) {
+    return <Badge label="Archived" variant="default" />;
+  }
+  return <Badge label="Active" variant="success" />;
 }
 
 function StarRating({ rating }: { rating: number }) {
@@ -82,9 +97,7 @@ function LibraryCard({ entry, onClick }: { entry: LibraryEntry; onClick: () => v
           <Download size={12} />
           <span>{entry.quality.download_count.toLocaleString()}</span>
         </div>
-        {entry.quality.maintained && (
-          <span className="text-emerald-600 font-medium">Maintained</span>
-        )}
+        <StatusBadge entry={entry} />
       </div>
     </button>
   );
@@ -112,11 +125,32 @@ function SkeletonCard() {
   );
 }
 
+function sortEntries(entries: LibraryEntry[], sortBy: SortField): LibraryEntry[] {
+  return [...entries].sort((a, b) => {
+    switch (sortBy) {
+      case 'name':
+        return a.name.localeCompare(b.name);
+      case 'rating':
+        return b.quality.rating - a.quality.rating;
+      case 'downloads':
+        return b.quality.download_count - a.quality.download_count;
+      case 'last_updated':
+        return new Date(b.quality.last_updated).getTime() - new Date(a.quality.last_updated).getTime();
+      default:
+        return 0;
+    }
+  });
+}
+
 export default function Registry() {
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
   const [verifiedOnly, setVerifiedOnly] = useState(false);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [sortBy, setSortBy] = useState<SortField>('name');
+  const [complexityFilter, setComplexityFilter] = useState<string>('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [goalDescription, setGoalDescription] = useState('');
 
   const {
     data: searchResult,
@@ -133,6 +167,23 @@ export default function Registry() {
 
   const entries = searchResult?.entries ?? [];
 
+  // Apply complexity filter and sorting
+  const filteredAndSorted = useMemo(() => {
+    let filtered = entries;
+    if (complexityFilter) {
+      filtered = filtered.filter((e) => e.complexity === complexityFilter);
+    }
+    return sortEntries(filtered, sortBy);
+  }, [entries, complexityFilter, sortBy]);
+
+  // Pagination
+  const totalPages = Math.max(1, Math.ceil(filteredAndSorted.length / ITEMS_PER_PAGE));
+  const safePage = Math.min(currentPage, totalPages);
+  const paginatedEntries = filteredAndSorted.slice(
+    (safePage - 1) * ITEMS_PER_PAGE,
+    safePage * ITEMS_PER_PAGE
+  );
+
   // Collect all unique tags from results
   const allTags = Array.from(
     new Set(entries.flatMap((e) => e.tags))
@@ -142,6 +193,23 @@ export default function Registry() {
     setSelectedTags((prev) =>
       prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
     );
+    setCurrentPage(1);
+  };
+
+  const handleGoalSearch = () => {
+    if (goalDescription.trim()) {
+      // Extract keywords from goal description
+      const stopWords = new Set(['i', 'a', 'an', 'the', 'to', 'and', 'or', 'for', 'of', 'in', 'on', 'is', 'am', 'are', 'was', 'were', 'be', 'been', 'my', 'what', 'how', 'do', 'does', 'want', 'need', 'trying', 'that', 'this', 'with']);
+      const keywords = goalDescription
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, '')
+        .split(/\s+/)
+        .filter((w) => w.length > 2 && !stopWords.has(w))
+        .slice(0, 5)
+        .join(' ');
+      setSearchTerm(keywords || goalDescription.trim());
+      setCurrentPage(1);
+    }
   };
 
   return (
@@ -152,6 +220,32 @@ export default function Registry() {
         <p className="text-sm text-gray-500 mt-1">
           Browse and discover agentic libraries
         </p>
+      </div>
+
+      {/* Describe what you need */}
+      <div className="mb-6">
+        <div className="bg-gradient-to-r from-indigo-50 to-blue-50 border border-indigo-200 rounded-xl p-5">
+          <div className="flex items-start gap-3">
+            <MessageSquareText size={20} className="text-indigo-600 mt-0.5 flex-shrink-0" />
+            <div className="flex-1">
+              <h3 className="text-sm font-semibold text-indigo-900 mb-2">Describe what you need</h3>
+              <textarea
+                value={goalDescription}
+                onChange={(e) => setGoalDescription(e.target.value)}
+                placeholder="What are you trying to accomplish? Describe your goal..."
+                rows={2}
+                className="w-full px-3 py-2 text-sm bg-white border border-indigo-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
+              />
+              <button
+                onClick={handleGoalSearch}
+                disabled={!goalDescription.trim()}
+                className="mt-2 px-4 py-1.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                Find Libraries
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Search bar */}
@@ -165,16 +259,16 @@ export default function Registry() {
             type="text"
             placeholder="Search libraries by name, description, or tags..."
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
             className="w-full pl-10 pr-4 py-2.5 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-shadow"
           />
         </div>
       </div>
 
-      {/* Filters */}
+      {/* Filters and sort */}
       <div className="mb-6 flex flex-wrap items-center gap-3">
         <button
-          onClick={() => setVerifiedOnly(!verifiedOnly)}
+          onClick={() => { setVerifiedOnly(!verifiedOnly); setCurrentPage(1); }}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
             verifiedOnly
               ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
@@ -184,6 +278,38 @@ export default function Registry() {
           <ShieldCheck size={14} />
           Verified only
         </button>
+
+        {/* Complexity filter */}
+        <div className="h-4 w-px bg-gray-300" />
+        <div className="flex items-center gap-1.5">
+          <select
+            value={complexityFilter}
+            onChange={(e) => { setComplexityFilter(e.target.value); setCurrentPage(1); }}
+            className="text-xs font-medium bg-white border border-gray-300 rounded-full px-3 py-1.5 text-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          >
+            <option value="">All Complexities</option>
+            <option value="simple">Simple</option>
+            <option value="moderate">Moderate</option>
+            <option value="complex">Complex</option>
+          </select>
+        </div>
+
+        {/* Sort control */}
+        <div className="h-4 w-px bg-gray-300" />
+        <div className="flex items-center gap-1.5">
+          <ArrowUpDown size={14} className="text-gray-400" />
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as SortField)}
+            className="text-xs font-medium bg-white border border-gray-300 rounded-full px-3 py-1.5 text-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          >
+            <option value="name">Sort by Name</option>
+            <option value="rating">Sort by Rating</option>
+            <option value="downloads">Sort by Downloads</option>
+            <option value="last_updated">Sort by Last Updated</option>
+          </select>
+        </div>
+
         <div className="h-4 w-px bg-gray-300" />
         {allTags.slice(0, 10).map((tag) => (
           <button
@@ -203,7 +329,8 @@ export default function Registry() {
       {/* Results count */}
       {searchResult && (
         <p className="text-xs text-gray-500 mb-4">
-          {searchResult.total_count} {searchResult.total_count === 1 ? 'library' : 'libraries'} found
+          {filteredAndSorted.length} {filteredAndSorted.length === 1 ? 'library' : 'libraries'} found
+          {filteredAndSorted.length !== searchResult.total_count && ` (${searchResult.total_count} total)`}
         </p>
       )}
 
@@ -226,9 +353,9 @@ export default function Registry() {
       )}
 
       {/* Results grid */}
-      {!isSearching && entries.length > 0 && (
+      {!isSearching && paginatedEntries.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {entries.map((entry) => (
+          {paginatedEntries.map((entry) => (
             <LibraryCard
               key={entry.qualified_id}
               entry={entry}
@@ -238,8 +365,33 @@ export default function Registry() {
         </div>
       )}
 
+      {/* Pagination */}
+      {!isSearching && filteredAndSorted.length > ITEMS_PER_PAGE && (
+        <div className="flex items-center justify-center gap-4 mt-8">
+          <button
+            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+            disabled={safePage <= 1}
+            className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            <ChevronLeft size={14} />
+            Previous
+          </button>
+          <span className="text-sm text-gray-600">
+            Page {safePage} of {totalPages}
+          </span>
+          <button
+            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+            disabled={safePage >= totalPages}
+            className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            Next
+            <ChevronRightIcon size={14} />
+          </button>
+        </div>
+      )}
+
       {/* Empty state */}
-      {!isSearching && !searchError && entries.length === 0 && (
+      {!isSearching && !searchError && filteredAndSorted.length === 0 && (
         <EmptyState
           title="No libraries found"
           description={

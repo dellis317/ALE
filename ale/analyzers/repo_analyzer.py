@@ -76,13 +76,33 @@ class RepoAnalyzer:
     def _analyze_code_patterns(self, project_files: list[Path]):
         """Analyze code structure for extractable patterns.
 
-        Looks for:
-        - Classes/functions with minimal external dependencies
-        - Well-defined input/output contracts
-        - Decorator patterns, middleware, plugins
+        Uses the IR-based CodeAnalyzer and ContextBuilder to enrich
+        each candidate with real symbol data, dependency information,
+        and caller/callee context.
         """
-        # TODO: Implement AST-based analysis using tree-sitter
-        pass
+        try:
+            from ale.analyzers.code_analyzer import CodeAnalyzer
+            from ale.analyzers.context_builder import ContextBuilder
+
+            code_analyzer = CodeAnalyzer(self.repo_path)
+            context_builder = ContextBuilder(self.repo_path)
+
+            for candidate in self.candidates:
+                try:
+                    # Enrich with IR-derived symbols, deps, descriptions
+                    code_analyzer.analyze_candidate(candidate, self.repo_path)
+                except Exception:
+                    pass  # Keep candidate with Phase 1 data
+
+                try:
+                    # Enrich with caller/callee context
+                    context_builder.build_context(candidate)
+                except Exception:
+                    pass  # Keep candidate without context data
+
+        except ImportError:
+            # If analyzers are not available, skip Phase 2 gracefully
+            pass
 
     def _analyze_with_llm(self, project_files: list[Path]):
         """Use LLM to identify higher-level extractable features.

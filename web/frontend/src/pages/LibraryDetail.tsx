@@ -11,8 +11,13 @@ import {
   CheckCircle2,
   XCircle,
   Play,
+  History,
+  ListChecks,
+  AlertTriangle,
+  Code2,
+  ClipboardCheck,
 } from 'lucide-react';
-import { getLibrary } from '../api/client';
+import { getLibrary, getLibraryVersions } from '../api/client';
 import Badge from '../components/Badge';
 
 function VerificationRow({
@@ -36,6 +41,192 @@ function VerificationRow({
           Failed
         </span>
       )}
+    </div>
+  );
+}
+
+function VersionHistory({ name, currentVersion }: { name: string; currentVersion: string }) {
+  const { data: versions, isLoading, error } = useQuery({
+    queryKey: ['library-versions', name],
+    queryFn: () => getLibraryVersions(name),
+    staleTime: 60000,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="bg-white rounded-xl border border-gray-200 p-6 animate-pulse">
+        <div className="h-5 bg-gray-200 rounded w-32 mb-4" />
+        <div className="space-y-2">
+          <div className="h-4 bg-gray-100 rounded w-full" />
+          <div className="h-4 bg-gray-100 rounded w-full" />
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !versions || versions.length === 0) return null;
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-6">
+      <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+        <History size={18} />
+        Version History
+      </h2>
+      <div className="space-y-2">
+        {versions.map((v) => (
+          <Link
+            key={v.version}
+            to={`/library/${name}/${v.version}`}
+            className={`flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors ${
+              v.version === currentVersion
+                ? 'bg-indigo-50 border border-indigo-200 text-indigo-700 font-medium'
+                : 'bg-gray-50 border border-gray-100 text-gray-700 hover:bg-gray-100'
+            }`}
+          >
+            <span className="font-mono">v{v.version}</span>
+            <div className="flex items-center gap-2">
+              {v.version === currentVersion && (
+                <Badge label="Current" variant="info" />
+              )}
+              {v.quality.last_updated && (
+                <span className="text-xs text-gray-400">
+                  {new Date(v.quality.last_updated).toLocaleDateString()}
+                </span>
+              )}
+            </div>
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+interface InstructionStep {
+  title?: string;
+  description?: string;
+  code_sketch?: string;
+  step_number?: number;
+}
+
+function InstructionsDisplay({ instructions }: { instructions: InstructionStep[] }) {
+  if (!instructions || instructions.length === 0) return null;
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-6">
+      <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+        <ListChecks size={18} />
+        Instructions
+      </h2>
+      <div className="space-y-4">
+        {instructions.map((step, i) => (
+          <div key={i} className="flex gap-4">
+            {/* Step number circle */}
+            <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-sm font-bold flex-shrink-0">
+              {step.step_number || i + 1}
+            </div>
+            <div className="flex-1 min-w-0">
+              {step.title && (
+                <h4 className="text-sm font-semibold text-gray-900 mb-1">{step.title}</h4>
+              )}
+              {step.description && (
+                <p className="text-sm text-gray-600 mb-2">{step.description}</p>
+              )}
+              {step.code_sketch && (
+                <pre className="text-xs bg-gray-900 text-gray-100 p-3 rounded-lg overflow-x-auto">
+                  {step.code_sketch}
+                </pre>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+interface GuardrailItem {
+  rule?: string;
+  severity?: string;
+  description?: string;
+}
+
+function GuardrailsChecklist({ guardrails }: { guardrails: GuardrailItem[] }) {
+  if (!guardrails || guardrails.length === 0) return null;
+
+  function severityVariant(severity: string | undefined): 'error' | 'warning' | 'info' {
+    switch (severity?.toLowerCase()) {
+      case 'must':
+        return 'error';
+      case 'should':
+        return 'warning';
+      case 'may':
+        return 'info';
+      default:
+        return 'info';
+    }
+  }
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-6">
+      <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+        <AlertTriangle size={18} />
+        Guardrails
+      </h2>
+      <div className="space-y-3">
+        {guardrails.map((g, i) => (
+          <div key={i} className="flex items-start gap-3 px-3 py-2.5 rounded-lg bg-gray-50 border border-gray-100">
+            <CheckCircle2 size={16} className="text-gray-400 mt-0.5 flex-shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-sm text-gray-800">{g.rule || g.description || 'Guardrail'}</span>
+                {g.severity && (
+                  <Badge label={g.severity} variant={severityVariant(g.severity)} />
+                )}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+interface ValidationCriterion {
+  description?: string;
+  test_approach?: string;
+  expected?: string;
+}
+
+function ValidationCriteria({ criteria }: { criteria: ValidationCriterion[] }) {
+  if (!criteria || criteria.length === 0) return null;
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-6">
+      <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+        <ClipboardCheck size={18} />
+        Validation Criteria
+      </h2>
+      <div className="space-y-4">
+        {criteria.map((c, i) => (
+          <div key={i} className="border-l-2 border-indigo-300 pl-4">
+            {c.description && (
+              <p className="text-sm font-medium text-gray-900 mb-1">{c.description}</p>
+            )}
+            {c.test_approach && (
+              <div className="flex items-start gap-2 mb-1">
+                <span className="text-xs text-gray-500 font-medium min-w-[80px]">Approach:</span>
+                <span className="text-xs text-gray-600">{c.test_approach}</span>
+              </div>
+            )}
+            {c.expected && (
+              <div className="flex items-start gap-2">
+                <span className="text-xs text-gray-500 font-medium min-w-[80px]">Expected:</span>
+                <span className="text-xs text-gray-600">{c.expected}</span>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -101,6 +292,19 @@ export default function LibraryDetail() {
       : library.complexity === 'moderate'
         ? 'warning'
         : 'error';
+
+  // Extract instructions, guardrails, and validation from library data if available
+  // These would come from the agentic_library source data
+  const libAny = library as Record<string, unknown>;
+  const instructions: InstructionStep[] = Array.isArray(libAny.instructions)
+    ? (libAny.instructions as InstructionStep[])
+    : [];
+  const guardrails: GuardrailItem[] = Array.isArray(libAny.guardrails)
+    ? (libAny.guardrails as GuardrailItem[])
+    : [];
+  const validationCriteria: ValidationCriterion[] = Array.isArray(libAny.validation_criteria)
+    ? (libAny.validation_criteria as ValidationCriterion[])
+    : [];
 
   return (
     <div>
@@ -189,6 +393,15 @@ export default function LibraryDetail() {
             </div>
           </div>
 
+          {/* Instructions */}
+          <InstructionsDisplay instructions={instructions} />
+
+          {/* Guardrails */}
+          <GuardrailsChecklist guardrails={guardrails} />
+
+          {/* Validation Criteria */}
+          <ValidationCriteria criteria={validationCriteria} />
+
           {/* Compatibility Targets */}
           {library.compatibility_targets.length > 0 && (
             <div className="bg-white rounded-xl border border-gray-200 p-6">
@@ -255,6 +468,26 @@ export default function LibraryDetail() {
             </Link>
           </div>
 
+          {/* Maintainer Info */}
+          <div className="bg-white rounded-xl border border-gray-200 p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <User size={18} />
+              Maintainer
+            </h2>
+            <div className="flex items-center gap-3">
+              {/* Avatar placeholder */}
+              <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0">
+                <User size={20} className="text-gray-400" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-gray-900">
+                  {library.quality.maintainer || 'Unknown'}
+                </p>
+                <p className="text-xs text-gray-500">Library maintainer</p>
+              </div>
+            </div>
+          </div>
+
           {/* Quality Signals */}
           <div className="bg-white rounded-xl border border-gray-200 p-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-4">Quality</h2>
@@ -287,16 +520,6 @@ export default function LibraryDetail() {
                 </span>
                 <span className="text-sm font-medium text-gray-900">
                   {library.quality.download_count.toLocaleString()}
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-600 flex items-center gap-1">
-                  <User size={14} />
-                  Maintainer
-                </span>
-                <span className="text-sm font-medium text-gray-900">
-                  {library.quality.maintainer}
                 </span>
               </div>
 
@@ -346,6 +569,9 @@ export default function LibraryDetail() {
               </div>
             )}
           </div>
+
+          {/* Version History */}
+          {name && <VersionHistory name={name} currentVersion={library.version} />}
         </div>
       </div>
     </div>

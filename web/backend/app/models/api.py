@@ -195,6 +195,10 @@ class CandidateResponse(BaseModel):
     estimated_instruction_steps: int = 0
     dependencies_external: list[str] = Field(default_factory=list)
     dependencies_internal: list[str] = Field(default_factory=list)
+    context_summary: str = ""
+    symbols: list[dict] = Field(default_factory=list)
+    callers: list[str] = Field(default_factory=list)
+    callees: list[str] = Field(default_factory=list)
 
 
 class AnalyzeRequest(BaseModel):
@@ -325,3 +329,166 @@ class IRParseRequest(BaseModel):
 
     file_path: str
     repo_root: str = ""
+
+
+# ---------------------------------------------------------------------------
+# Generator / Editor models
+# ---------------------------------------------------------------------------
+
+
+class DraftResponse(BaseModel):
+    """Response model for a saved draft."""
+
+    id: str
+    name: str
+    yaml_content: str
+    created_at: str = ""
+    updated_at: str = ""
+
+
+class SaveDraftRequest(BaseModel):
+    """Request body for saving a draft."""
+
+    name: str
+    yaml_content: str
+
+
+class PublishFromEditorRequest(BaseModel):
+    """Request body for publishing from the editor."""
+
+    yaml_content: str
+    name: str = ""
+
+
+class ValidateContentRequest(BaseModel):
+    """Request body for validating raw YAML content."""
+
+    yaml_content: str
+
+
+class ValidateContentResponse(BaseModel):
+    """Response for YAML content validation."""
+
+    valid: bool
+    schema_errors: list[str] = Field(default_factory=list)
+    semantic_errors: list[str] = Field(default_factory=list)
+    semantic_warnings: list[str] = Field(default_factory=list)
+
+
+class EnrichRequest(BaseModel):
+    """Request body for LLM enrichment."""
+
+    yaml_content: str
+
+
+class EnrichResponse(BaseModel):
+    """Response for LLM enrichment."""
+
+    enriched_yaml: str
+    suggestions: list[str] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Auth models
+# ---------------------------------------------------------------------------
+
+
+class UserResponse(BaseModel):
+    """Public representation of a user."""
+
+    id: str
+    username: str
+    email: str
+    display_name: str
+    avatar_url: str = ""
+    provider: str = ""
+    role: str = "viewer"
+    org_id: str = ""
+    created_at: str = ""
+    last_login: str = ""
+
+
+class APIKeyResponse(BaseModel):
+    """Public representation of an API key (no secret material)."""
+
+    id: str
+    name: str
+    prefix: str
+    created_at: str = ""
+    expires_at: str = ""
+    last_used: str = ""
+
+
+class APIKeyCreateRequest(BaseModel):
+    """Request body for creating a new API key."""
+
+    name: str
+    expires_in_days: int = 90
+
+
+class APIKeyCreateResponse(BaseModel):
+    """Response after creating an API key -- includes raw key shown once."""
+
+    key: APIKeyResponse
+    raw_key: str  # Only shown once at creation
+
+
+class RoleUpdateRequest(BaseModel):
+    """Request body for updating a user's role."""
+
+    role: str
+
+
+class LoginResponse(BaseModel):
+    """Response after successful login."""
+
+    token: str
+    user: UserResponse
+
+
+class AuthStatusResponse(BaseModel):
+    """Response for the /me endpoint."""
+
+    authenticated: bool
+    user: Optional[UserResponse] = None
+
+
+# ---------------------------------------------------------------------------
+# Conformance history models
+# ---------------------------------------------------------------------------
+
+
+class ConformanceHistoryEntry(BaseModel):
+    """A single conformance history entry."""
+
+    library_name: str
+    library_version: str
+    ran_at: str
+    all_passed: bool
+    schema_passed: bool
+    semantic_passed: bool
+    hooks_passed: bool
+    total_duration_ms: int = 0
+
+
+class BatchConformanceResult(BaseModel):
+    """Result of batch conformance run across all registry libraries."""
+
+    total: int
+    passed: int
+    failed: int
+    results: list[ConformanceResponse] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Drift summary models
+# ---------------------------------------------------------------------------
+
+
+class DriftSummaryResponse(BaseModel):
+    """Aggregate drift statistics for a repository."""
+
+    total_libraries: int = 0
+    clean_count: int = 0
+    drifted_count: int = 0
+    by_type: dict[str, int] = Field(default_factory=dict)

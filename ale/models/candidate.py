@@ -99,6 +99,12 @@ class ExtractionCandidate:
     dependencies_external: list[str] = field(default_factory=list)
     dependencies_internal: list[str] = field(default_factory=list)
 
+    # Phase 2 enrichment fields
+    context_summary: str = ""
+    symbols: list[dict] = field(default_factory=list)  # [{name, kind, signature, docstring}]
+    callers: list[str] = field(default_factory=list)
+    callees: list[str] = field(default_factory=list)
+
     @property
     def overall_score(self) -> float:
         """Use 7-dimension scoring if available, fallback to legacy."""

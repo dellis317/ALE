@@ -1,11 +1,15 @@
 import { NavLink, Outlet } from 'react-router-dom';
-import { Package, Search, ShieldCheck, Activity } from 'lucide-react';
+import { Package, Search, ShieldCheck, Activity, Network, Wand2, Settings } from 'lucide-react';
+import UserMenu from './UserMenu';
 
 const navItems = [
   { to: '/', label: 'Registry', icon: Package, end: true },
   { to: '/analyze', label: 'Analyzer', icon: Search },
+  { to: '/generate', label: 'Generator', icon: Wand2 },
   { to: '/conformance', label: 'Conformance', icon: ShieldCheck },
   { to: '/drift', label: 'Drift', icon: Activity },
+  { to: '/ir', label: 'IR Explorer', icon: Network },
+  { to: '/settings/api-keys', label: 'Settings', icon: Settings },
 ];
 
 export default function Layout() {
@@ -40,10 +44,8 @@ export default function Layout() {
           ))}
         </nav>
 
-        {/* Footer */}
-        <div className="px-6 py-4 border-t border-white/10">
-          <p className="text-xs text-slate-500">ALE Web Portal v1.0</p>
-        </div>
+        {/* User menu / Footer */}
+        <UserMenu />
       </aside>
 
       {/* Main content */}
