@@ -1,0 +1,156 @@
+agentic_library:
+  manifest:
+    name: rate-limiter
+    version: 1.0.0
+    description: >
+      Token bucket rate limiter with per-key tracking and sliding window support.
+      Controls request throughput with configurable burst allowance.
+    complexity: moderate
+    tags:
+      - networking
+      - security
+      - middleware
+    language_agnostic: true
+
+  overview: |
+    A rate limiter controls how many requests a client can make within a time window.
+    This implementation uses the token bucket algorithm, which allows short bursts while
+    enforcing an average rate over time.
+
+    Core concepts:
+    - Each key (user, IP, API key) gets its own bucket
+    - Buckets hold tokens that are consumed by requests
+    - Tokens refill at a steady rate up to a maximum capacity
+    - When tokens are exhausted, requests are denied until tokens refill
+
+    This is broadly useful in any application that serves requests — APIs, web apps,
+    message processors, etc.
+
+  instructions:
+    - step: 1
+      title: Create the token bucket data structure
+      description: |
+        Implement a TokenBucket that tracks:
+        - capacity: maximum number of tokens (determines burst size)
+        - tokens: current available tokens (starts at capacity)
+        - refill_rate: tokens added per second
+        - last_refill: timestamp of last refill calculation
+
+        The bucket should be cheap to create and store, as you may have thousands
+        of them (one per client).
+      code_sketch: |
+        TokenBucket:
+          capacity: integer
+          tokens: float
+          refill_rate: float
+          last_refill: timestamp
+      notes: Use monotonic/steady clock for timestamps, not wall clock.
+
+    - step: 2
+      title: Implement the refill logic
+      description: |
+        Before checking tokens, calculate how many should have been added since
+        the last check. This is "lazy refill" — we don't use timers, we just
+        calculate on access.
+
+        tokens_to_add = (now - last_refill) * refill_rate
+        new_tokens = min(capacity, current_tokens + tokens_to_add)
+        last_refill = now
+
+        This must be atomic or protected by a lock to be concurrency-safe.
+      code_sketch: |
+        function refill(bucket):
+          elapsed = now() - bucket.last_refill
+          bucket.tokens = min(bucket.capacity, bucket.tokens + elapsed * bucket.refill_rate)
+          bucket.last_refill = now()
+
+    - step: 3
+      title: Implement the consume/check function
+      description: |
+        The primary interface. Given a key and optional cost (default 1):
+        1. Look up or create the bucket for that key
+        2. Refill the bucket
+        3. If tokens >= cost, subtract and return allowed=true
+        4. Otherwise return allowed=false with retry_after hint
+
+        Return value should include:
+        - allowed: boolean
+        - remaining: integer (tokens left)
+        - retry_after: float seconds (0 if allowed)
+      code_sketch: |
+        function check(key, cost=1):
+          bucket = get_or_create_bucket(key)
+          refill(bucket)
+          if bucket.tokens >= cost:
+            bucket.tokens -= cost
+            return {allowed: true, remaining: floor(bucket.tokens), retry_after: 0}
+          else:
+            deficit = cost - bucket.tokens
+            return {allowed: false, remaining: 0, retry_after: deficit / bucket.refill_rate}
+
+    - step: 4
+      title: Implement bucket storage and cleanup
+      description: |
+        Store buckets in a dictionary/map keyed by the rate limit key.
+        Implement periodic cleanup of expired buckets (those that haven't been
+        accessed and are fully refilled) to prevent memory growth.
+
+        Cleanup can be:
+        - Lazy: check age on access, remove if stale
+        - Periodic: background sweep every N minutes
+        - LRU: evict least-recently-used when count exceeds threshold
+      notes: For distributed systems, use an external store (Redis, etc.) instead of in-memory.
+
+    - step: 5
+      title: Integrate as middleware (if applicable)
+      description: |
+        If the target project is a web application, create middleware that:
+        1. Extracts the rate limit key from the request (IP, user ID, API key)
+        2. Calls check() with that key
+        3. If denied, returns HTTP 429 with Retry-After header
+        4. If allowed, adds X-RateLimit-Remaining header and continues
+
+  guardrails:
+    - rule: Must be thread-safe / concurrency-safe
+      severity: must
+      rationale: Rate limiters are typically hit from concurrent requests
+    - rule: Must use monotonic clock, not wall clock
+      severity: must
+      rationale: Wall clock can jump backwards (NTP, DST) causing incorrect token calculations
+    - rule: Should not allocate memory per-check beyond the bucket lookup
+      severity: should
+      rationale: Hot path performance — rate limiters sit in front of every request
+    - rule: Must not leak information about other clients through rate limit responses
+      severity: must
+      rationale: Security — a client should not be able to infer another client's usage
+    - rule: Should support configurable limits per key category
+      severity: should
+      rationale: Different API endpoints or user tiers may need different limits
+
+  validation:
+    - description: Requests within limit are allowed
+      test_approach: Create a limiter with capacity=5, send 5 requests in quick succession
+      expected_behavior: All 5 return allowed=true
+    - description: Requests exceeding limit are rejected
+      test_approach: Create a limiter with capacity=5, send 6 requests in quick succession
+      expected_behavior: First 5 allowed, 6th denied with retry_after > 0
+    - description: Tokens refill over time
+      test_approach: Exhaust all tokens, wait for refill period, try again
+      expected_behavior: Request succeeds after waiting
+    - description: Independent keys don't interfere
+      test_approach: Exhaust limit for key A, then send request for key B
+      expected_behavior: Key B request is allowed
+    - description: Concurrent access is safe
+      test_approach: Send many concurrent requests for the same key
+      expected_behavior: Total allowed requests does not exceed capacity
+
+  capability_dependencies:
+    - caching
+    - logging
+
+  framework_hints:
+    express: Implement as Express middleware using app.use()
+    django: Implement as Django middleware class with process_request()
+    fastapi: Implement as a FastAPI Depends() dependency
+    flask: Implement as a before_request handler
+    gin: Implement as Gin middleware function
