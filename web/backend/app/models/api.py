@@ -984,3 +984,61 @@ class GenerateHierarchicalLibraryResponse(BaseModel):
     success: bool
     library: Optional[GeneratedLibraryResponse] = None
     message: str = ""
+
+
+# ---------------------------------------------------------------------------
+# AI Query models
+# ---------------------------------------------------------------------------
+
+
+class AIQueryRequest(BaseModel):
+    """Request body for submitting an AI query about a component."""
+
+    repo_url: str
+    library_name: str
+    component_name: str
+    prompt: str
+    input_method: str = "text"
+    candidate_description: str = ""
+    candidate_tags: list[str] = Field(default_factory=list)
+    source_files: list[str] = Field(default_factory=list)
+    context_summary: str = ""
+
+
+class AIQueryResponse(BaseModel):
+    """Response for an AI query."""
+
+    id: str
+    response: str
+    model: str = ""
+    tokens_used: int = 0
+    cost_estimate: float = 0.0
+    timestamp: str = ""
+
+
+class AIQueryHistoryEntry(BaseModel):
+    """A single entry in AI query history."""
+
+    id: str
+    user_id: str
+    username: str
+    prompt: str
+    response: str
+    input_method: str = "text"
+    timestamp: str = ""
+
+
+class UserModerationStatusResponse(BaseModel):
+    """Moderation status for a user."""
+
+    user_id: str
+    violation_count: int = 0
+    is_locked: bool = False
+
+
+class ModerationErrorResponse(BaseModel):
+    """Error response when content moderation blocks a prompt."""
+
+    reason: str
+    violation_type: str
+    is_locked: bool = False

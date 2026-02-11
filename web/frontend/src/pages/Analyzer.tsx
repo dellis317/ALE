@@ -24,6 +24,7 @@ import type { Candidate, AnalyzeResult, CodebaseSummary } from '../types';
 import ScoreBar from '../components/ScoreBar';
 import Badge from '../components/Badge';
 import EmptyState from '../components/EmptyState';
+import AIQueryPanel from '../components/AIQueryPanel';
 
 function CodebaseSummaryCard({ summary }: { summary: CodebaseSummary }) {
   const [expanded, setExpanded] = useState(false);
@@ -420,6 +421,17 @@ function CandidateRow({
               )}
             </div>
           </div>
+
+          {/* AI Query Panel */}
+          <AIQueryPanel
+            repoPath={repoPath}
+            libraryName={repoPath.split('/').filter(Boolean).pop() || repoPath}
+            componentName={candidate.name}
+            candidateDescription={candidate.description}
+            candidateTags={candidate.tags}
+            sourceFiles={candidate.source_files}
+            contextSummary={''}
+          />
         </div>
       )}
     </div>

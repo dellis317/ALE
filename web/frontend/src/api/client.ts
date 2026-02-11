@@ -38,6 +38,10 @@ import type {
   SecurityDashboard,
   GeneratedLibrary,
   GenerateLibraryResponse,
+  AIQueryRequest,
+  AIQueryResponse,
+  AIQueryHistoryEntry,
+  UserModerationStatus,
 } from '../types';
 
 class ApiError extends Error {
@@ -629,4 +633,49 @@ export async function getGeneratedLibrary(id: string): Promise<GeneratedLibrary>
 
 export async function deleteGeneratedLibrary(id: string): Promise<void> {
   await request<void>(`/api/generate/libraries/${id}`, { method: 'DELETE' });
+}
+
+// AI Query API
+
+export async function submitAIQuery(params: AIQueryRequest): Promise<AIQueryResponse> {
+  return request<AIQueryResponse>('/api/ai-query', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  });
+}
+
+export async function getAIQueryHistory(
+  libraryName: string,
+  componentName: string,
+  limit?: number
+): Promise<AIQueryHistoryEntry[]> {
+  const searchParams = new URLSearchParams({
+    library_name: libraryName,
+    component_name: componentName,
+  });
+  if (limit !== undefined) searchParams.set('limit', String(limit));
+  return request<AIQueryHistoryEntry[]>(`/api/ai-query/history?${searchParams.toString()}`);
+}
+
+export async function getAIQueryInsights(
+  libraryName: string,
+  componentName: string,
+  limit?: number
+): Promise<AIQueryHistoryEntry[]> {
+  const params = new URLSearchParams();
+  if (limit !== undefined) params.set('limit', String(limit));
+  const qs = params.toString();
+  return request<AIQueryHistoryEntry[]>(
+    `/api/ai-query/insights/${encodeURIComponent(libraryName)}/${encodeURIComponent(componentName)}${qs ? '?' + qs : ''}`
+  );
+}
+
+export async function getUserModerationStatus(): Promise<UserModerationStatus> {
+  return request<UserModerationStatus>('/api/ai-query/user-status');
+}
+
+export async function adminUnlockUser(userId: string): Promise<void> {
+  await request<void>(`/api/ai-query/admin/unlock/${encodeURIComponent(userId)}`, {
+    method: 'POST',
+  });
 }

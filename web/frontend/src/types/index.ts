@@ -512,3 +512,48 @@ export interface GenerateLibraryResponse {
   library: GeneratedLibrary;
   message: string;
 }
+
+// AI Query types
+
+export interface AIQueryRequest {
+  repo_url: string;
+  library_name: string;
+  component_name: string;
+  prompt: string;
+  input_method: 'text' | 'voice';
+  candidate_description: string;
+  candidate_tags: string[];
+  source_files: string[];
+  context_summary: string;
+}
+
+export interface AIQueryResponse {
+  id: string;
+  response: string;
+  model: string;
+  tokens_used: number;
+  cost_estimate: number;
+  timestamp: string;
+}
+
+export interface AIQueryHistoryEntry {
+  id: string;
+  user_id: string;
+  username: string;
+  prompt: string;
+  response: string;
+  input_method: string;
+  timestamp: string;
+}
+
+export interface UserModerationStatus {
+  user_id: string;
+  violation_count: number;
+  is_locked: boolean;
+}
+
+export interface ModerationErrorDetail {
+  reason: string;
+  violation_type: string;
+  is_locked: boolean;
+}
