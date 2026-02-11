@@ -45,6 +45,7 @@ class LibraryEntryResponse(BaseModel):
 
     name: str
     version: str
+    library_id: str = ""
     spec_version: str = ""
     description: str = ""
     tags: list[str] = Field(default_factory=list)

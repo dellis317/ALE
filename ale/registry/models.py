@@ -37,6 +37,7 @@ class RegistryEntry:
     # Identity
     name: str
     version: str
+    library_id: str = ""
     spec_version: str = ""
     description: str = ""
 

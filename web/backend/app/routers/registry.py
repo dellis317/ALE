@@ -38,6 +38,7 @@ def _entry_to_response(entry) -> LibraryEntryResponse:
     v = entry.quality.verification
     return LibraryEntryResponse(
         name=entry.name,
+        library_id=entry.library_id,
         version=entry.version,
         spec_version=entry.spec_version,
         description=entry.description,

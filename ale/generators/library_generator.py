@@ -54,6 +54,15 @@ class LibraryGenerator:
             tags=candidate.tags,
         )
 
+        library.overview = (
+            f"Blueprint for implementing {candidate.name} functionality.\n\n"
+            "**Integration Contract**: This library provides instructions, not executable code. "
+            "Implement these instructions natively in your target project's language and framework. "
+            "Use your project's existing dependencies, security model, and coding conventions. "
+            "The result should look like it was hand-written for your project.\n\n"
+            f"{candidate.description}"
+        )
+
         # Read source files and build initial instructions
         for i, src_file in enumerate(candidate.source_files):
             path = Path(src_file)
@@ -81,6 +90,32 @@ class LibraryGenerator:
             Guardrail(
                 rule="Include error handling appropriate to the target project's patterns",
                 severity="must",
+            ),
+            # Integration contract guardrails — ensure library doesn't override target project
+            Guardrail(
+                rule="Implement all functionality in the target project's primary language",
+                severity="must",
+                rationale="ALE libraries are blueprints, not code transplants — the implementation must be native to the target project",
+            ),
+            Guardrail(
+                rule="Do not introduce new external dependencies unless the target project has no equivalent",
+                severity="must",
+                rationale="Libraries should leverage the target project's existing dependency graph, not impose a new one",
+            ),
+            Guardrail(
+                rule="Do not override or replace the target project's security configuration, authentication model, or encryption approach",
+                severity="must",
+                rationale="Security decisions belong to the target project — ALE libraries integrate with existing security, never replace it",
+            ),
+            Guardrail(
+                rule="Do not hardcode environment-specific values such as ports, paths, hostnames, or environment variable names",
+                severity="must",
+                rationale="The target project controls its own environment configuration",
+            ),
+            Guardrail(
+                rule="Adapt code patterns to match the target project's existing conventions for error handling, logging, and configuration",
+                severity="should",
+                rationale="Native integration means the implemented code should be indistinguishable from hand-written project code",
             ),
         ]
 
