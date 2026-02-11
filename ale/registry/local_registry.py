@@ -6,6 +6,7 @@ Stores registry entries as JSON in a local directory.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -20,6 +21,11 @@ from ale.registry.models import (
 )
 from ale.spec.schema_validator import validate_schema
 from ale.spec.semantic_validator import validate_semantics
+
+
+def generate_library_id(name: str) -> str:
+    h = hashlib.sha256(name.encode()).hexdigest()[:8]
+    return f"ale_{h}"
 
 
 class LocalRegistry:
@@ -55,8 +61,14 @@ class LocalRegistry:
             hooks_runnable=any(v.get("hook") for v in lib.get("validation", [])),
         )
 
+        # Generate or reuse library_id
+        lib_name = manifest.get("name", "")
+        existing_id = self.get_library_id(lib_name)
+        library_id = existing_id if existing_id else generate_library_id(lib_name)
+
         entry = RegistryEntry(
-            name=manifest.get("name", ""),
+            name=lib_name,
+            library_id=library_id,
             version=manifest.get("version", ""),
             spec_version=manifest.get("spec_version", ""),
             description=manifest.get("description", ""),
@@ -126,6 +138,13 @@ class LocalRegistry:
         """List all entries in the registry."""
         return [_dict_to_entry(d) for d in self._index.values()]
 
+    def get_library_id(self, name: str) -> str | None:
+        """Look up the library_id for a given library name."""
+        for data in self._index.values():
+            if data.get("name") == name and data.get("library_id"):
+                return data["library_id"]
+        return None
+
     def _load_index(self) -> dict[str, dict]:
         if self.index_path.exists():
             with open(self.index_path) as f:
@@ -140,6 +159,7 @@ class LocalRegistry:
 def _entry_to_dict(entry: RegistryEntry) -> dict:
     return {
         "name": entry.name,
+        "library_id": entry.library_id,
         "version": entry.version,
         "spec_version": entry.spec_version,
         "description": entry.description,
@@ -164,6 +184,7 @@ def _dict_to_entry(data: dict) -> RegistryEntry:
     quality_data = data.get("quality", {})
     return RegistryEntry(
         name=data["name"],
+        library_id=data.get("library_id", ""),
         version=data["version"],
         spec_version=data.get("spec_version", ""),
         description=data.get("description", ""),

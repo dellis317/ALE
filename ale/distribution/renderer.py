@@ -1,0 +1,235 @@
+"""Build-plan renderer — transforms parsed .agentic.yaml data into Markdown build plans.
+
+Reads the dict produced by loading an `.agentic.yaml` file and emits a
+consumer-friendly `build-plan.md` that an AI coding agent can follow
+step-by-step.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+import yaml
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _get(data: dict, *keys: str, default: Any = "") -> Any:
+    """Safely traverse nested dicts, returning *default* on any miss."""
+    current = data
+    for key in keys:
+        if not isinstance(current, dict):
+            return default
+        current = current.get(key, default)
+        if current is None:
+            return default
+    return current
+
+
+def _severity_label(severity: str) -> str:
+    """Normalise guardrail severity to upper-case label."""
+    return severity.upper() if severity else "MUST"
+
+
+# ---------------------------------------------------------------------------
+# Section renderers
+# ---------------------------------------------------------------------------
+
+def _render_header(manifest: dict, library_id: str) -> str:
+    name = _get(manifest, "name") or "Unnamed Library"
+    version = _get(manifest, "version") or "0.0.0"
+    complexity = _get(manifest, "complexity") or "unknown"
+
+    lines = [
+        f"# {name} — ALE Build Plan",
+        f"Library ID: {library_id} | Version: {version} | Complexity: {complexity}",
+        "",
+        (
+            "> **Integration Contract**: This library is a blueprint — a set of "
+            "instructions for building"
+        ),
+        (
+            "> this feature NATIVELY in your project. Implement it in YOUR "
+            "project's language, using YOUR"
+        ),
+        (
+            "> existing dependencies, security model, and conventions. Do not "
+            "introduce new frameworks,"
+        ),
+        (
+            "> override architectural decisions, or change the project's "
+            "security posture."
+        ),
+    ]
+    return "\n".join(lines)
+
+
+def _render_overview(overview: str) -> str:
+    if not overview:
+        return ""
+    return f"## Overview\n{overview.strip()}"
+
+
+def _render_instructions(steps: list[dict]) -> str:
+    if not steps:
+        return ""
+
+    parts: list[str] = ["## Implementation Steps"]
+    for step in steps:
+        step_num = step.get("step", "")
+        title = step.get("title", "Untitled")
+        description = step.get("description", "").strip()
+        code_sketch = step.get("code_sketch", "").strip()
+        notes = step.get("notes", "").strip()
+
+        parts.append(f"\n### Step {step_num}: {title}")
+        if description:
+            parts.append(description)
+        if code_sketch:
+            parts.append("**Code Sketch:**")
+            parts.append(f"```\n{code_sketch}\n```")
+        if notes:
+            parts.append(f"**Notes:** {notes}")
+
+    return "\n".join(parts)
+
+
+def _render_guardrails(guardrails: list[dict]) -> str:
+    if not guardrails:
+        return ""
+
+    lines: list[str] = ["## Guardrails"]
+    for g in guardrails:
+        severity = _severity_label(g.get("severity", "must"))
+        rule = g.get("rule", "")
+        rationale = g.get("rationale", "")
+        if rationale:
+            lines.append(f"- **{severity}**: {rule} — {rationale}")
+        else:
+            lines.append(f"- **{severity}**: {rule}")
+    return "\n".join(lines)
+
+
+def _render_validation(criteria: list[dict]) -> str:
+    if not criteria:
+        return ""
+
+    lines: list[str] = ["## Validation Criteria"]
+    for v in criteria:
+        description = v.get("description", "")
+        test_approach = v.get("test_approach", "")
+        expected = v.get("expected_behavior", "")
+        parts = [f"- [ ] {description}"]
+        if test_approach:
+            parts.append(f"Test: {test_approach}")
+        if expected:
+            parts.append(f"Expected: {expected}")
+        lines.append(" — ".join(parts))
+    return "\n".join(lines)
+
+
+def _render_capability_deps(deps: list[str] | list[dict] | None) -> str:
+    if not deps:
+        return ""
+
+    lines: list[str] = ["## Capability Dependencies"]
+    for dep in deps:
+        if isinstance(dep, dict):
+            lines.append(f"- {dep.get('capability', dep)}")
+        else:
+            lines.append(f"- {dep}")
+    return "\n".join(lines)
+
+
+def _render_framework_hints(hints: dict | None) -> str:
+    if not hints:
+        return ""
+
+    lines: list[str] = [
+        "## Framework Hints",
+        "| Framework | Guidance |",
+        "|-----------|----------|",
+    ]
+    for framework, guidance in hints.items():
+        lines.append(f"| {framework} | {guidance} |")
+    return "\n".join(lines)
+
+
+def _render_footer() -> str:
+    return (
+        "---\n"
+        "*Generated by ALE (Agentic Library Exchange) — "
+        "This is a build plan, not executable code.*\n"
+        "*Follow these instructions to implement the feature "
+        "natively in your target project.*"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+def render_build_plan(yaml_data: dict, library_id: str = "") -> str:
+    """Render a parsed ``.agentic.yaml`` dict into a Markdown build plan.
+
+    Parameters
+    ----------
+    yaml_data:
+        The dictionary obtained by loading an ``.agentic.yaml`` file
+        (e.g. via ``yaml.safe_load``).  Expected top-level key is
+        ``agentic_library``.
+    library_id:
+        Optional library identifier to display in the header.
+
+    Returns
+    -------
+    str
+        A complete Markdown document suitable for writing to
+        ``build-plan.md``.
+    """
+    root = yaml_data.get("agentic_library", yaml_data)
+    manifest = root.get("manifest", {}) or {}
+    overview = _get(root, "overview")
+    instructions = root.get("instructions", []) or []
+    guardrails = root.get("guardrails", []) or []
+    validation = root.get("validation", []) or []
+    capability_deps = root.get("capability_dependencies", []) or []
+    framework_hints = root.get("framework_hints", {}) or {}
+
+    sections: list[str] = [
+        _render_header(manifest, library_id),
+        _render_overview(overview),
+        _render_instructions(instructions),
+        _render_guardrails(guardrails),
+        _render_validation(validation),
+        _render_capability_deps(capability_deps),
+        _render_framework_hints(framework_hints),
+        _render_footer(),
+    ]
+
+    # Drop empty sections and join with double newlines.
+    return "\n\n".join(section for section in sections if section) + "\n"
+
+
+def render_build_plan_from_file(yaml_path: str, library_id: str = "") -> str:
+    """Load a YAML file from disk and render it as a Markdown build plan.
+
+    Parameters
+    ----------
+    yaml_path:
+        Path to an ``.agentic.yaml`` file.
+    library_id:
+        Optional library identifier to display in the header.
+
+    Returns
+    -------
+    str
+        A complete Markdown document.
+    """
+    path = Path(yaml_path)
+    with path.open("r", encoding="utf-8") as fh:
+        yaml_data = yaml.safe_load(fh) or {}
+    return render_build_plan(yaml_data, library_id=library_id)
