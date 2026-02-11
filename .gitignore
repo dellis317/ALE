@@ -15,3 +15,10 @@ venv/
 .coverage
 htmlcov/
 *.so
+
+# Frontend
+node_modules/
+web/frontend/dist/
+
+# Registry data
+.ale_registry/
