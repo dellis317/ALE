@@ -85,6 +85,7 @@ export interface Candidate {
   entry_points: string[];
   overall_score: number;
   tags: string[];
+  size_class: string; // widget | component | service | app
   isolation_score: number;
   reuse_score: number;
   complexity_score: number;
@@ -95,6 +96,24 @@ export interface Candidate {
     all_flags: string[];
     top_reasons: string[];
   };
+}
+
+// GitHub repo search types
+export interface GitHubRepoResult {
+  full_name: string;
+  description: string;
+  html_url: string;
+  clone_url: string;
+  stargazers_count: number;
+  forks_count: number;
+  language: string;
+  updated_at: string;
+  topics: string[];
+}
+
+export interface GitHubSearchResponse {
+  total_count: number;
+  results: GitHubRepoResult[];
 }
 
 export interface DriftReport {

@@ -13,7 +13,24 @@ Implements the 7-dimension scoring system from the architecture doc:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Any
+
+
+class SizeClass(Enum):
+    """Classification of library size/scope for agentic libraries.
+
+    Helps consumers understand the scope and effort involved:
+    - WIDGET: Single function or tiny utility (<50 lines, 1 file)
+    - COMPONENT: A focused module or small set of modules (<500 lines, 1-5 files)
+    - SERVICE: Multiple modules with coordination (<5000 lines, 5-20 files)
+    - APP: Full application or large system (5000+ lines, 20+ files)
+    """
+
+    WIDGET = "widget"
+    COMPONENT = "component"
+    SERVICE = "service"
+    APP = "app"
 
 
 @dataclass
@@ -100,6 +117,9 @@ class ExtractionCandidate:
     dependencies_external: list[str] = field(default_factory=list)
     dependencies_internal: list[str] = field(default_factory=list)
 
+    # Size classification
+    size_class: str = ""  # widget | component | service | app
+
     # Phase 2 enrichment fields
     context_summary: str = ""
     symbols: list[dict] = field(default_factory=list)  # [{name, kind, signature, docstring}]
@@ -118,6 +138,28 @@ class ExtractionCandidate:
             + self.complexity_score * 0.20
             + self.clarity_score * 0.20
         )
+
+    def classify_size(self) -> str:
+        """Auto-classify the candidate's size based on its metrics.
+
+        Uses file count, symbol count, and entry point count to determine
+        whether this is a Widget, Component, Service, or App.
+        """
+        num_files = len(self.source_files)
+        num_symbols = len(self.symbols)
+        num_entry_points = len(self.entry_points)
+
+        if num_files <= 1 and num_symbols <= 3 and num_entry_points <= 2:
+            cls = SizeClass.WIDGET.value
+        elif num_files <= 5 and num_symbols <= 15:
+            cls = SizeClass.COMPONENT.value
+        elif num_files <= 20 and num_symbols <= 40:
+            cls = SizeClass.SERVICE.value
+        else:
+            cls = SizeClass.APP.value
+
+        self.size_class = cls
+        return cls
 
     def summary(self) -> str:
         return (
@@ -138,6 +180,7 @@ class ExtractionCandidate:
             "complexity_score": self.complexity_score,
             "clarity_score": self.clarity_score,
             "tags": self.tags,
+            "size_class": self.size_class,
             "estimated_instruction_steps": self.estimated_instruction_steps,
             "dependencies_external": self.dependencies_external,
             "dependencies_internal": self.dependencies_internal,

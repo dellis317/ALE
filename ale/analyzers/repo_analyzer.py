@@ -495,7 +495,7 @@ class RepoAnalyzer:
             pass
 
     def _score_candidates(self) -> None:
-        """Apply real 7-dimension scoring to all candidates."""
+        """Apply real 7-dimension scoring and size classification to all candidates."""
         from ale.analyzers.scorer import score_candidate
 
         for candidate in self.candidates:
@@ -503,6 +503,8 @@ class RepoAnalyzer:
                 score_candidate(candidate)
             except Exception:
                 pass
+            # Auto-classify size after scoring (uses symbols/files/entry_points)
+            candidate.classify_size()
 
     # ------------------------------------------------------------------
     # Phase 3: LLM (stub)
@@ -571,4 +573,5 @@ class RepoAnalyzer:
         except Exception:
             pass
 
+        whole_candidate.classify_size()
         self.candidates.append(whole_candidate)

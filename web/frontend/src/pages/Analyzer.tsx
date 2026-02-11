@@ -18,13 +18,38 @@ import {
   XCircle,
   Globe,
   BookOpen,
+  Star,
+  GitFork,
+  ExternalLink,
+  Layers,
 } from 'lucide-react';
-import { analyzeRepo, generateHierarchicalLibrary } from '../api/client';
-import type { Candidate, AnalyzeResult, CodebaseSummary } from '../types';
+import { analyzeRepo, generateHierarchicalLibrary, searchGitHubRepos } from '../api/client';
+import type { Candidate, AnalyzeResult, CodebaseSummary, GitHubRepoResult } from '../types';
 import ScoreBar from '../components/ScoreBar';
 import Badge from '../components/Badge';
 import EmptyState from '../components/EmptyState';
 import AIQueryPanel from '../components/AIQueryPanel';
+
+const SIZE_CLASS_CONFIG: Record<string, { label: string; color: string; description: string }> = {
+  widget: { label: 'Widget', color: 'bg-sky-100 text-sky-700 border-sky-200', description: 'Single function or tiny utility' },
+  component: { label: 'Component', color: 'bg-emerald-100 text-emerald-700 border-emerald-200', description: 'Focused module or small set of modules' },
+  service: { label: 'Service', color: 'bg-amber-100 text-amber-700 border-amber-200', description: 'Multiple modules with coordination' },
+  app: { label: 'App', color: 'bg-purple-100 text-purple-700 border-purple-200', description: 'Full application or large system' },
+};
+
+function SizeClassBadge({ sizeClass }: { sizeClass: string }) {
+  const config = SIZE_CLASS_CONFIG[sizeClass];
+  if (!config) return null;
+  return (
+    <span
+      className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold rounded-full border ${config.color}`}
+      title={config.description}
+    >
+      <Layers size={10} />
+      {config.label}
+    </span>
+  );
+}
 
 function CodebaseSummaryCard({ summary }: { summary: CodebaseSummary }) {
   const [expanded, setExpanded] = useState(false);
@@ -247,6 +272,9 @@ function CandidateRow({
               <span className="text-xs text-gray-500">
                 {candidate.source_files.length} file{candidate.source_files.length !== 1 ? 's' : ''}
               </span>
+              {candidate.size_class && (
+                <SizeClassBadge sizeClass={candidate.size_class} />
+              )}
               {isWholeCodebase && (
                 <Badge label="Full Repository" variant="info" />
               )}
@@ -444,6 +472,12 @@ export default function Analyzer() {
   const [generatingCandidate, setGeneratingCandidate] = useState<string | null>(null);
   const navigate = useNavigate();
 
+  // GitHub search state
+  const [showGitHubSearch, setShowGitHubSearch] = useState(false);
+  const [ghQuery, setGhQuery] = useState('');
+  const [ghLanguage, setGhLanguage] = useState('');
+  const [ghResults, setGhResults] = useState<GitHubRepoResult[]>([]);
+
   const mutation = useMutation({
     mutationFn: () => analyzeRepo(repoPath, depth),
   });
@@ -469,9 +503,21 @@ export default function Analyzer() {
     },
   });
 
+  const ghSearchMutation = useMutation({
+    mutationFn: () => searchGitHubRepos({ query: ghQuery, language: ghLanguage }),
+    onSuccess: (data) => {
+      setGhResults(data.results);
+    },
+  });
+
   const handleGenerate = (candidate: Candidate) => {
     setGeneratingCandidate(candidate.name);
     generateMutation.mutate(candidate);
+  };
+
+  const handleSelectGhRepo = (repo: GitHubRepoResult) => {
+    setRepoPath(repo.clone_url);
+    setShowGitHubSearch(false);
   };
 
   const result: AnalyzeResult | undefined = mutation.data;
@@ -499,6 +545,132 @@ export default function Analyzer() {
         </p>
       </div>
 
+      {/* GitHub Repo Search */}
+      <div className="bg-white rounded-xl border border-gray-200 p-6 mb-4">
+        <button
+          onClick={() => setShowGitHubSearch(!showGitHubSearch)}
+          className="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-indigo-600 transition-colors"
+        >
+          {showGitHubSearch ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+          <Globe size={16} />
+          Search GitHub for Repositories
+        </button>
+
+        {showGitHubSearch && (
+          <div className="mt-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
+              <div className="md:col-span-2">
+                <input
+                  type="text"
+                  placeholder="Search keywords (e.g. rate limiter, auth middleware)"
+                  value={ghQuery}
+                  onChange={(e) => setGhQuery(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && ghQuery.trim() && ghSearchMutation.mutate()}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                />
+              </div>
+              <div>
+                <select
+                  value={ghLanguage}
+                  onChange={(e) => setGhLanguage(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                >
+                  <option value="">Any Language</option>
+                  <option value="python">Python</option>
+                  <option value="javascript">JavaScript</option>
+                  <option value="typescript">TypeScript</option>
+                  <option value="go">Go</option>
+                  <option value="rust">Rust</option>
+                  <option value="java">Java</option>
+                  <option value="csharp">C#</option>
+                  <option value="ruby">Ruby</option>
+                </select>
+              </div>
+              <div>
+                <button
+                  onClick={() => ghSearchMutation.mutate()}
+                  disabled={!ghQuery.trim() || ghSearchMutation.isPending}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gray-800 text-white text-sm font-medium rounded-lg hover:bg-gray-900 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {ghSearchMutation.isPending ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <Search size={14} />
+                  )}
+                  Search GitHub
+                </button>
+              </div>
+            </div>
+
+            {ghSearchMutation.error && (
+              <p className="text-sm text-red-600 mb-3">
+                {ghSearchMutation.error instanceof Error
+                  ? ghSearchMutation.error.message
+                  : 'Search failed'}
+              </p>
+            )}
+
+            {ghResults.length > 0 && (
+              <div className="border border-gray-200 rounded-lg overflow-hidden">
+                <div className="max-h-80 overflow-y-auto">
+                  {ghResults.map((repo) => (
+                    <button
+                      key={repo.full_name}
+                      onClick={() => handleSelectGhRepo(repo)}
+                      className="w-full text-left px-4 py-3 border-b border-gray-100 last:border-b-0 hover:bg-indigo-50/50 transition-colors"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-0.5">
+                            <span className="font-medium text-sm text-gray-900">
+                              {repo.full_name}
+                            </span>
+                            {repo.language && (
+                              <span className="text-xs text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
+                                {repo.language}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-gray-600 line-clamp-1">
+                            {repo.description || 'No description'}
+                          </p>
+                          {repo.topics.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {repo.topics.slice(0, 5).map((topic) => (
+                                <span key={topic} className="text-xs text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">
+                                  {topic}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3 text-xs text-gray-500 flex-shrink-0">
+                          <span className="flex items-center gap-1">
+                            <Star size={12} /> {repo.stargazers_count.toLocaleString()}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <GitFork size={12} /> {repo.forks_count.toLocaleString()}
+                          </span>
+                          <a
+                            href={repo.html_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="text-gray-400 hover:text-indigo-600"
+                          >
+                            <ExternalLink size={12} />
+                          </a>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* Input form */}
       <div className="bg-white rounded-xl border border-gray-200 p-6 mb-8">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
@@ -507,12 +679,12 @@ export default function Analyzer() {
               htmlFor="repo-path"
               className="block text-sm font-medium text-gray-700 mb-1"
             >
-              Repository Path
+              Repository Path or URL
             </label>
             <input
               id="repo-path"
               type="text"
-              placeholder="/path/to/repository"
+              placeholder="/path/to/repository or https://github.com/owner/repo.git"
               value={repoPath}
               onChange={(e) => setRepoPath(e.target.value)}
               className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"

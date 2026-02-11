@@ -1,7 +1,10 @@
-"""Analyze router -- repository analysis and library generation."""
+"""Analyze router -- repository analysis, library generation, and GitHub search."""
 
 from __future__ import annotations
 
+import os
+
+import httpx
 from fastapi import APIRouter, HTTPException
 
 from ale.analyzers.repo_analyzer import RepoAnalyzer
@@ -14,6 +17,9 @@ from web.backend.app.models.api import (
     CodebaseSummaryResponse,
     GenerateRequest,
     GenerateResponse,
+    GitHubRepoResult,
+    GitHubSearchRequest,
+    GitHubSearchResponse,
     ScoreDimensionResponse,
     ScoringBreakdownResponse,
 )
@@ -53,6 +59,7 @@ def _candidate_to_response(candidate) -> CandidateResponse:
         complexity_score=candidate.complexity_score,
         clarity_score=candidate.clarity_score,
         tags=candidate.tags,
+        size_class=getattr(candidate, "size_class", ""),
         estimated_instruction_steps=candidate.estimated_instruction_steps,
         dependencies_external=candidate.dependencies_external,
         dependencies_internal=candidate.dependencies_internal,
@@ -153,4 +160,94 @@ async def generate_library(request: GenerateRequest):
         success=True,
         output_path=output_path,
         message=f"Library generated at {output_path}",
+    )
+
+
+# ---------------------------------------------------------------------------
+# GitHub Repository Search
+# ---------------------------------------------------------------------------
+
+GITHUB_API_BASE = "https://api.github.com"
+
+
+@router.post(
+    "/api/analyze/search-repos",
+    response_model=GitHubSearchResponse,
+    summary="Search GitHub repositories by keyword",
+)
+async def search_github_repos(request: GitHubSearchRequest):
+    """Search GitHub for repositories matching a query.
+
+    Useful for discovering repos to analyze without needing the URL upfront.
+    Supports optional language filtering and sort order (stars, forks, updated).
+    """
+    if not request.query.strip():
+        raise HTTPException(status_code=400, detail="query is required")
+
+    # Build the GitHub search query
+    q = request.query.strip()
+    if request.language:
+        q += f" language:{request.language}"
+
+    params = {
+        "q": q,
+        "sort": request.sort or "stars",
+        "order": "desc",
+        "per_page": min(request.per_page, 30),
+    }
+
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+
+    # Use GitHub token if available for higher rate limits
+    github_token = os.environ.get("GITHUB_TOKEN", "")
+    if github_token:
+        headers["Authorization"] = f"Bearer {github_token}"
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(
+                f"{GITHUB_API_BASE}/search/repositories",
+                params=params,
+                headers=headers,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 403:
+            raise HTTPException(
+                status_code=429,
+                detail="GitHub API rate limit exceeded. Set GITHUB_TOKEN for higher limits.",
+            )
+        raise HTTPException(
+            status_code=502,
+            detail=f"GitHub API error: {exc.response.status_code}",
+        )
+    except httpx.RequestError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Failed to reach GitHub API: {exc}",
+        )
+
+    results = []
+    for item in data.get("items", []):
+        results.append(
+            GitHubRepoResult(
+                full_name=item.get("full_name", ""),
+                description=item.get("description") or "",
+                html_url=item.get("html_url", ""),
+                clone_url=item.get("clone_url", ""),
+                stargazers_count=item.get("stargazers_count", 0),
+                forks_count=item.get("forks_count", 0),
+                language=item.get("language") or "",
+                updated_at=item.get("updated_at", ""),
+                topics=item.get("topics", []),
+            )
+        )
+
+    return GitHubSearchResponse(
+        total_count=data.get("total_count", 0),
+        results=results,
     )

@@ -38,6 +38,7 @@ import type {
   SecurityDashboard,
   GeneratedLibrary,
   GenerateLibraryResponse,
+  GitHubSearchResponse,
   AIQueryRequest,
   AIQueryResponse,
   AIQueryHistoryEntry,
@@ -141,6 +142,23 @@ export async function analyzeRepo(
     body: JSON.stringify({
       repo_path: repoPath,
       depth: depth || 'standard',
+    }),
+  });
+}
+
+export async function searchGitHubRepos(params: {
+  query: string;
+  language?: string;
+  sort?: string;
+  per_page?: number;
+}): Promise<GitHubSearchResponse> {
+  return request<GitHubSearchResponse>('/api/analyze/search-repos', {
+    method: 'POST',
+    body: JSON.stringify({
+      query: params.query,
+      language: params.language || '',
+      sort: params.sort || 'stars',
+      per_page: params.per_page || 10,
     }),
   });
 }

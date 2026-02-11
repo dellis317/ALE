@@ -192,6 +192,7 @@ class CandidateResponse(BaseModel):
     complexity_score: float = 0.0
     clarity_score: float = 0.0
     tags: list[str] = Field(default_factory=list)
+    size_class: str = ""  # widget | component | service | app
     estimated_instruction_steps: int = 0
     dependencies_external: list[str] = Field(default_factory=list)
     dependencies_internal: list[str] = Field(default_factory=list)
@@ -967,6 +968,36 @@ class GeneratedLibraryResponse(BaseModel):
     structure: LibraryDocNodeResponse
 
 
+class GitHubSearchRequest(BaseModel):
+    """Request body for searching GitHub repositories."""
+
+    query: str
+    language: str = ""
+    sort: str = "stars"  # stars | forks | updated
+    per_page: int = 10
+
+
+class GitHubRepoResult(BaseModel):
+    """A single GitHub repository search result."""
+
+    full_name: str
+    description: str = ""
+    html_url: str
+    clone_url: str
+    stargazers_count: int = 0
+    forks_count: int = 0
+    language: str = ""
+    updated_at: str = ""
+    topics: list[str] = Field(default_factory=list)
+
+
+class GitHubSearchResponse(BaseModel):
+    """Response for GitHub repository search."""
+
+    total_count: int = 0
+    results: list[GitHubRepoResult] = Field(default_factory=list)
+
+
 class GenerateHierarchicalLibraryRequest(BaseModel):
     """Request body for generating a hierarchical library from analysis."""
 
@@ -976,6 +1007,7 @@ class GenerateHierarchicalLibraryRequest(BaseModel):
     source_files: list[str] = Field(default_factory=list)
     entry_points: list[str] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
+    size_class: str = ""  # widget | component | service | app
 
 
 class GenerateHierarchicalLibraryResponse(BaseModel):
