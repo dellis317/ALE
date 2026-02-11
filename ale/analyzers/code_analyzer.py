@@ -126,62 +126,112 @@ class CodeAnalyzer:
             return symbol.name
 
     def _build_module_description(self, module: IRModule) -> str:
-        """Build a description from an IR module's content."""
+        """Build a description from an IR module's content.
+
+        Prioritizes the module-level docstring, then falls back
+        to summarizing the public API.
+        """
+        # Lead with the module docstring — this tells us what the module does
+        if module.docstring:
+            first = module.docstring.strip().split("\n\n")[0].replace("\n", " ").strip()
+            # Take just the first sentence if it's short enough
+            dot = first.find(". ")
+            if 0 < dot < 120:
+                return first[: dot + 1]
+            if len(first) <= 150:
+                return first
+            return first[:150].rstrip() + "..."
+
+        # Fall back to class/function docstrings
+        for cls in module.classes[:2]:
+            if cls.docstring:
+                line = cls.docstring.strip().split("\n")[0]
+                return f"{cls.name}: {line}"
+
+        for func in module.functions[:2]:
+            if func.visibility == Visibility.PUBLIC and func.docstring:
+                line = func.docstring.strip().split("\n")[0]
+                return f"{func.name}: {line}"
+
+        # Last resort: list the public API
         parts = []
-
-        # Check for module-level docstring (first symbol might give a clue)
-        # Count symbol types
-        func_count = len(module.functions)
-        class_count = len(module.classes)
-
-        if class_count > 0:
-            class_names = [s.name for s in module.classes[:3]]
-            parts.append(f"Defines classes: {', '.join(class_names)}")
-        if func_count > 0:
-            func_names = [s.name for s in module.functions if s.visibility == Visibility.PUBLIC][:3]
-            if func_names:
-                parts.append(f"Public functions: {', '.join(func_names)}")
-
-        return ". ".join(parts)
+        if module.classes:
+            parts.append(f"Defines {', '.join(s.name for s in module.classes[:3])}")
+        pub = [s.name for s in module.functions if s.visibility == Visibility.PUBLIC][:3]
+        if pub:
+            parts.append(f"provides {', '.join(pub)}")
+        return "; ".join(parts) if parts else ""
 
     def _build_rich_description(self, modules: list[IRModule], name: str) -> str:
-        """Build a rich description from all parsed modules."""
+        """Build a human-readable description of what this component does.
+
+        Leads with the most informative docstring to explain the use-case,
+        then appends structural details.
+        """
+        # 1. Find the best docstring across all modules for this candidate
+        lead = ""
+
+        # Try module-level docstrings first
+        for m in modules:
+            if m.docstring:
+                text = m.docstring.strip().split("\n\n")[0].replace("\n", " ").strip()
+                dot = text.find(". ")
+                if 0 < dot < 120:
+                    text = text[: dot + 1]
+                elif len(text) > 150:
+                    text = text[:150].rstrip() + "..."
+                if len(text) > len(lead):
+                    lead = text
+
+        # Try class docstrings
+        if not lead:
+            for m in modules:
+                for cls in m.classes:
+                    if cls.docstring:
+                        line = cls.docstring.strip().split("\n")[0]
+                        lead = f"{cls.name} -- {line}"
+                        break
+                if lead:
+                    break
+
+        # Try function docstrings
+        if not lead:
+            for m in modules:
+                for func in m.functions:
+                    if func.visibility == Visibility.PUBLIC and func.docstring:
+                        line = func.docstring.strip().split("\n")[0]
+                        lead = f"{func.name} -- {line}"
+                        break
+                if lead:
+                    break
+
+        # 2. Build supporting detail
         all_funcs = []
         all_classes = []
-
         for m in modules:
             all_funcs.extend(m.functions)
             all_classes.extend(m.classes)
 
-        parts = []
-
+        detail_parts = []
         if all_classes:
-            class_descriptions = []
-            for cls in all_classes[:3]:
-                desc = cls.name
-                if cls.docstring:
-                    first_line = cls.docstring.strip().split("\n")[0]
-                    desc = f"{cls.name} -- {first_line}"
-                class_descriptions.append(desc)
-            parts.append(f"Provides: {'; '.join(class_descriptions)}")
-
-        if all_funcs:
-            pub_funcs = [f for f in all_funcs if f.visibility == Visibility.PUBLIC][:5]
-            if pub_funcs:
-                func_names = [f.name for f in pub_funcs]
-                parts.append(f"Key functions: {', '.join(func_names)}")
-
+            detail_parts.append(
+                f"{len(all_classes)} class{'es' if len(all_classes) != 1 else ''}"
+            )
+        pub_funcs = [f for f in all_funcs if f.visibility == Visibility.PUBLIC]
+        if pub_funcs:
+            detail_parts.append(
+                f"{len(pub_funcs)} public function{'s' if len(pub_funcs) != 1 else ''}"
+            )
         total_symbols = sum(len(m.symbols) for m in modules)
-        total_deps_ext = sum(
-            len([d for d in m.imports if d.is_external]) for m in modules
-        )
-        total_deps_int = sum(
-            len([d for d in m.imports if not d.is_external]) for m in modules
-        )
+        if total_symbols:
+            detail_parts.append(f"{total_symbols} symbols total")
 
-        parts.append(
-            f"{total_symbols} symbols, {total_deps_ext} external deps, "
-            f"{total_deps_int} internal deps"
-        )
+        detail = ", ".join(detail_parts) if detail_parts else ""
 
-        return ". ".join(parts) if parts else f"Utility module: {name}"
+        if lead and detail:
+            return f"{lead} ({detail})"
+        if lead:
+            return lead
+        if detail:
+            return f"Utility module: {name} ({detail})"
+        return f"Utility module: {name}"

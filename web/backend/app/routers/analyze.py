@@ -79,6 +79,7 @@ def _summary_to_response(summary) -> CodebaseSummaryResponse:
         type_hint_coverage=summary.type_hint_coverage,
         has_tests=summary.has_tests,
         has_ci_config=summary.has_ci_config,
+        description=summary.description,
         purpose=summary.purpose,
         top_level_packages=summary.top_level_packages,
         key_capabilities=summary.key_capabilities,

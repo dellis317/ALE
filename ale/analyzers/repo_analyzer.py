@@ -147,6 +147,7 @@ class RepoAnalyzer:
 
         purpose = self._infer_purpose(top_level_dirs, ext_packages, files_by_lang)
         capabilities = self._infer_capabilities(ir_modules)
+        description = self._build_description(ir_modules)
 
         self.summary = CodebaseSummary(
             total_files=len(project_files),
@@ -168,6 +169,7 @@ class RepoAnalyzer:
             ),
             has_tests=has_tests,
             has_ci_config=has_ci,
+            description=description,
             purpose=purpose,
             top_level_packages=sorted(top_level_dirs),
             key_capabilities=capabilities,
@@ -188,6 +190,178 @@ class RepoAnalyzer:
             except Exception:
                 continue
         return modules
+
+    def _build_description(self, ir_modules: list) -> str:
+        """Synthesize a human-readable description of what this codebase does.
+
+        Tries in order:
+        1. pyproject.toml / setup.cfg [project] description
+        2. First meaningful paragraph of README.md
+        3. Top-level __init__.py or __main__.py module docstring
+        4. Synthesis from the most informative module docstrings
+        """
+        # 1. pyproject.toml / setup.cfg
+        desc = self._read_project_metadata_description()
+        if desc:
+            return desc
+
+        # 2. README.md — first non-heading, non-badge paragraph
+        desc = self._read_readme_description()
+        if desc:
+            return desc
+
+        # 3. Top-level module docstrings (__init__.py, __main__.py, or the
+        #    primary package's __init__.py)
+        for mod in ir_modules:
+            path_parts = mod.path.replace("\\", "/").split("/")
+            basename = path_parts[-1] if path_parts else ""
+            if basename in ("__init__.py", "__main__.py") and len(path_parts) <= 2:
+                if mod.docstring:
+                    return self._first_sentence_or_paragraph(mod.docstring)
+
+        # 4. Gather all module docstrings, pick the most informative ones
+        docstrings: list[tuple[str, str]] = []  # (module_path, docstring)
+        for mod in ir_modules:
+            if mod.docstring:
+                docstrings.append((mod.path, mod.docstring))
+
+        if docstrings:
+            # Pick up to 3 module docstrings and combine them
+            summaries = []
+            for _path, ds in docstrings[:5]:
+                sentence = self._first_sentence(ds)
+                if sentence and len(sentence) > 15:
+                    summaries.append(sentence)
+                if len(summaries) >= 3:
+                    break
+            if summaries:
+                return ". ".join(summaries)
+
+        return ""
+
+    def _read_project_metadata_description(self) -> str:
+        """Read description from pyproject.toml or setup.cfg."""
+        # pyproject.toml
+        pyproject = self.repo_path / "pyproject.toml"
+        if pyproject.exists():
+            try:
+                text = pyproject.read_text(errors="replace")
+                for line in text.splitlines():
+                    stripped = line.strip()
+                    if stripped.startswith("description"):
+                        # description = "..."
+                        parts = stripped.split("=", 1)
+                        if len(parts) == 2:
+                            val = parts[1].strip().strip('"').strip("'")
+                            if val and len(val) > 10:
+                                return val
+            except Exception:
+                pass
+
+        # setup.cfg
+        setupcfg = self.repo_path / "setup.cfg"
+        if setupcfg.exists():
+            try:
+                text = setupcfg.read_text(errors="replace")
+                in_metadata = False
+                for line in text.splitlines():
+                    if line.strip() == "[metadata]":
+                        in_metadata = True
+                        continue
+                    if in_metadata and line.startswith("["):
+                        break
+                    if in_metadata and line.strip().startswith("description"):
+                        parts = line.split("=", 1)
+                        if len(parts) == 2:
+                            val = parts[1].strip()
+                            if val and len(val) > 10:
+                                return val
+            except Exception:
+                pass
+
+        return ""
+
+    def _read_readme_description(self) -> str:
+        """Extract the first descriptive paragraph from README."""
+        for name in ("README.md", "README.rst", "README.txt", "README"):
+            readme = self.repo_path / name
+            if readme.exists():
+                try:
+                    text = readme.read_text(errors="replace")
+                    return self._extract_readme_summary(text)
+                except Exception:
+                    pass
+        return ""
+
+    @staticmethod
+    def _extract_readme_summary(text: str) -> str:
+        """Pull the first real paragraph from markdown/rst README."""
+        lines = text.splitlines()
+        paragraph_lines: list[str] = []
+        found_content = False
+
+        for line in lines:
+            stripped = line.strip()
+
+            # Skip headings, badges, blank lines, HTML, and dividers
+            if not stripped:
+                if found_content and paragraph_lines:
+                    break  # end of first paragraph
+                continue
+            if stripped.startswith(("#", "=", "-", "!", "[!", "<", "```", "---", "***")):
+                if found_content and paragraph_lines:
+                    break
+                continue
+            if stripped.startswith("[![") or stripped.startswith("!["):
+                continue
+
+            found_content = True
+            paragraph_lines.append(stripped)
+
+        if not paragraph_lines:
+            return ""
+
+        paragraph = " ".join(paragraph_lines)
+        # Cap at ~200 chars
+        if len(paragraph) > 200:
+            cut = paragraph[:200].rfind(". ")
+            if cut > 80:
+                return paragraph[: cut + 1]
+            return paragraph[:200].rstrip() + "..."
+        return paragraph
+
+    @staticmethod
+    def _first_sentence_or_paragraph(text: str) -> str:
+        """Return the first sentence or first paragraph, whichever is shorter."""
+        text = text.strip()
+        # First paragraph
+        para = text.split("\n\n")[0].replace("\n", " ").strip()
+        # First sentence
+        sentence = ""
+        for end in (". ", ".\n"):
+            idx = para.find(end)
+            if idx > 0:
+                candidate = para[: idx + 1]
+                if not sentence or len(candidate) < len(sentence):
+                    sentence = candidate
+
+        result = sentence if sentence and len(sentence) < len(para) else para
+        if len(result) > 200:
+            return result[:200].rstrip() + "..."
+        return result
+
+    @staticmethod
+    def _first_sentence(text: str) -> str:
+        """Return the first sentence of a string."""
+        text = text.strip().split("\n\n")[0].replace("\n", " ").strip()
+        for end in (". ", ".\n"):
+            idx = text.find(end)
+            if idx > 0:
+                return text[: idx + 1]
+        # If no period, return the whole first paragraph (capped)
+        if len(text) > 150:
+            return text[:150].rstrip() + "..."
+        return text
 
     def _infer_purpose(
         self,
@@ -365,24 +539,26 @@ class RepoAnalyzer:
                     })
 
         s = self.summary
-        desc_parts = []
-        if s.purpose:
-            desc_parts.append(s.purpose)
-        desc_parts.append(
+
+        # Lead with what the project does, then add stats
+        desc_lead = s.description or s.purpose or "Software project"
+        desc = (
+            f"{desc_lead}. "
             f"{s.total_files} files, {s.total_lines:,} lines, "
             f"{s.total_functions} functions, {s.total_classes} classes"
         )
 
+        context_lead = s.description or s.purpose
         whole_candidate = ExtractionCandidate(
             name="__whole_codebase__",
-            description=". ".join(desc_parts),
+            description=desc,
             source_files=all_files,
             entry_points=all_entry_points[:50],
             tags=["whole-codebase", "full-repository"],
             dependencies_external=self.summary.external_packages,
             dependencies_internal=[],
             context_summary=(
-                f"Complete codebase: {s.purpose}. "
+                f"Complete codebase: {context_lead}. "
                 f"Contains {s.total_modules} modules with "
                 f"{s.total_functions} functions and {s.total_classes} classes."
             ),
