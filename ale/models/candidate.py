@@ -207,7 +207,8 @@ class CodebaseSummary:
     has_ci_config: bool = False
 
     # Purpose / description
-    purpose: str = ""
+    description: str = ""  # What the project does — its jobs to be done
+    purpose: str = ""  # Structural classification (framework, language, type)
     top_level_packages: list[str] = field(default_factory=list)
     key_capabilities: list[str] = field(default_factory=list)
 
@@ -226,6 +227,7 @@ class CodebaseSummary:
             "type_hint_coverage": self.type_hint_coverage,
             "has_tests": self.has_tests,
             "has_ci_config": self.has_ci_config,
+            "description": self.description,
             "purpose": self.purpose,
             "top_level_packages": self.top_level_packages,
             "key_capabilities": self.key_capabilities,

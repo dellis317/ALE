@@ -43,7 +43,12 @@ function CodebaseSummaryCard({ summary }: { summary: CodebaseSummary }) {
             <h3 className="text-lg font-semibold text-gray-900 mb-1">
               Codebase Summary
             </h3>
-            <p className="text-sm text-gray-600">{summary.purpose}</p>
+            {summary.description && (
+              <p className="text-sm text-gray-800 mb-1">{summary.description}</p>
+            )}
+            {summary.purpose && (
+              <p className="text-xs text-gray-500">{summary.purpose}</p>
+            )}
             <div className="flex flex-wrap gap-4 mt-3 text-sm text-gray-700">
               <span className="flex items-center gap-1.5">
                 <FileText size={14} className="text-gray-400" />

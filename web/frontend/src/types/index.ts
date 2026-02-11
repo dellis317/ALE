@@ -239,6 +239,7 @@ export interface CodebaseSummary {
   type_hint_coverage: number;
   has_tests: boolean;
   has_ci_config: boolean;
+  description: string;
   purpose: string;
   top_level_packages: string[];
   key_capabilities: string[];

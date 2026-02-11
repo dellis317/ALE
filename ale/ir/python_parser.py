@@ -54,7 +54,11 @@ def parse_python_file(file_path: str | Path, repo_root: str | Path = "") -> IRMo
         return IRModule(path=str(file_path.relative_to(repo_root)), language="python")
 
     relative_path = str(file_path.relative_to(repo_root))
-    module = IRModule(path=relative_path, language="python")
+    module = IRModule(
+        path=relative_path,
+        language="python",
+        docstring=ast.get_docstring(tree) or "",
+    )
 
     for node in ast.iter_child_nodes(tree):
         if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):

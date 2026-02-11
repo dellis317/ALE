@@ -115,6 +115,7 @@ class IRModule:
     language: str
     symbols: list[IRSymbol] = field(default_factory=list)
     imports: list[IRDependency] = field(default_factory=list)
+    docstring: str = ""  # Module-level docstring
 
     @property
     def public_symbols(self) -> list[IRSymbol]:

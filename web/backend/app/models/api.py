@@ -217,6 +217,7 @@ class CodebaseSummaryResponse(BaseModel):
     type_hint_coverage: float = 0.0
     has_tests: bool = False
     has_ci_config: bool = False
+    description: str = ""
     purpose: str = ""
     top_level_packages: list[str] = Field(default_factory=list)
     key_capabilities: list[str] = Field(default_factory=list)
