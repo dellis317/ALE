@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { Package, Search, ShieldCheck, Activity, Network, Wand2, Settings, Building2, Sparkles, Shield, ClipboardCheck, Lock, Compass } from 'lucide-react';
+import { Package, Search, ShieldCheck, Activity, Network, Wand2, BookOpen, Settings, Building2, Sparkles, Shield, ClipboardCheck, Lock, Compass } from 'lucide-react';
 import UserMenu from './UserMenu';
 import DeploymentConfigGuide, { hasSeenDeployGuide } from './DeploymentConfigGuide';
 import { hasCompletedSetup } from '../pages/SetupWizard';
@@ -9,6 +9,7 @@ const navItems = [
   { to: '/', label: 'Registry', icon: Package, end: true },
   { to: '/analyze', label: 'Analyzer', icon: Search },
   { to: '/generate', label: 'Generator', icon: Wand2 },
+  { to: '/libraries', label: 'Libraries', icon: BookOpen },
   { to: '/conformance', label: 'Conformance', icon: ShieldCheck },
   { to: '/drift', label: 'Drift', icon: Activity },
   { to: '/ir', label: 'IR Explorer', icon: Network },

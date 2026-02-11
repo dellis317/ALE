@@ -36,6 +36,8 @@ import type {
   WebhookDelivery,
   Plugin,
   SecurityDashboard,
+  GeneratedLibrary,
+  GenerateLibraryResponse,
 } from '../types';
 
 class ApiError extends Error {
@@ -599,4 +601,32 @@ export async function togglePlugin(id: string, enabled: boolean): Promise<Plugin
 
 export async function deletePlugin(id: string): Promise<void> {
   await request<void>(`/api/security/plugins/${id}`, { method: 'DELETE' });
+}
+
+// Hierarchical Library Generation API
+
+export async function generateHierarchicalLibrary(params: {
+  repo_path: string;
+  candidate_name: string;
+  candidate_description: string;
+  source_files: string[];
+  entry_points: string[];
+  tags: string[];
+}): Promise<GenerateLibraryResponse> {
+  return request<GenerateLibraryResponse>('/api/generate/library', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  });
+}
+
+export async function listGeneratedLibraries(): Promise<GeneratedLibrary[]> {
+  return request<GeneratedLibrary[]>('/api/generate/libraries');
+}
+
+export async function getGeneratedLibrary(id: string): Promise<GeneratedLibrary> {
+  return request<GeneratedLibrary>(`/api/generate/libraries/${id}`);
+}
+
+export async function deleteGeneratedLibrary(id: string): Promise<void> {
+  await request<void>(`/api/generate/libraries/${id}`, { method: 'DELETE' });
 }

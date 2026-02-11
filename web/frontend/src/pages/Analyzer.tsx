@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import {
   Search,
   Loader2,
@@ -16,8 +17,9 @@ import {
   CheckCircle2,
   XCircle,
   Globe,
+  BookOpen,
 } from 'lucide-react';
-import { analyzeRepo } from '../api/client';
+import { analyzeRepo, generateHierarchicalLibrary } from '../api/client';
 import type { Candidate, AnalyzeResult, CodebaseSummary } from '../types';
 import ScoreBar from '../components/ScoreBar';
 import Badge from '../components/Badge';
@@ -194,10 +196,16 @@ function CandidateRow({
   candidate,
   rank,
   isWholeCodebase,
+  repoPath,
+  onGenerate,
+  isGenerating,
 }: {
   candidate: Candidate;
   rank: number;
   isWholeCodebase: boolean;
+  repoPath: string;
+  onGenerate: (candidate: Candidate) => void;
+  isGenerating: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -274,7 +282,30 @@ function CandidateRow({
 
       {expanded && (
         <div className="px-5 pb-5 border-t border-gray-100">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-4">
+          {/* Generate Library button */}
+          <div className="mt-4 mb-4">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onGenerate(candidate);
+              }}
+              disabled={isGenerating}
+              className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {isGenerating ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : (
+                <BookOpen size={16} />
+              )}
+              {isGenerating
+                ? 'Generating Library...'
+                : isWholeCodebase
+                  ? 'Generate Codebase Library'
+                  : 'Generate Component Library'}
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Score dimensions */}
             <div>
               <h4 className="text-sm font-semibold text-gray-700 mb-3">Score Breakdown</h4>
@@ -398,10 +429,38 @@ function CandidateRow({
 export default function Analyzer() {
   const [repoPath, setRepoPath] = useState('');
   const [depth, setDepth] = useState<'quick' | 'standard' | 'deep'>('standard');
+  const [generatingCandidate, setGeneratingCandidate] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   const mutation = useMutation({
     mutationFn: () => analyzeRepo(repoPath, depth),
   });
+
+  const generateMutation = useMutation({
+    mutationFn: (candidate: Candidate) =>
+      generateHierarchicalLibrary({
+        repo_path: repoPath,
+        candidate_name: candidate.name,
+        candidate_description: candidate.description,
+        source_files: candidate.source_files,
+        entry_points: candidate.entry_points,
+        tags: candidate.tags,
+      }),
+    onSuccess: (data) => {
+      setGeneratingCandidate(null);
+      if (data.success && data.library) {
+        navigate(`/libraries/${data.library.id}`);
+      }
+    },
+    onError: () => {
+      setGeneratingCandidate(null);
+    },
+  });
+
+  const handleGenerate = (candidate: Candidate) => {
+    setGeneratingCandidate(candidate.name);
+    generateMutation.mutate(candidate);
+  };
 
   const result: AnalyzeResult | undefined = mutation.data;
   const candidates = result?.candidates ?? [];
@@ -520,6 +579,17 @@ export default function Analyzer() {
             <CodebaseSummaryCard summary={summary} />
           )}
 
+          {/* Generate error toast */}
+          {generateMutation.error && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6">
+              <p className="text-sm text-red-700">
+                {generateMutation.error instanceof Error
+                  ? generateMutation.error.message
+                  : 'Failed to generate library'}
+              </p>
+            </div>
+          )}
+
           {/* Whole codebase option */}
           {wholeCodebaseCandidate && (
             <div className="mb-6">
@@ -531,6 +601,9 @@ export default function Analyzer() {
                 candidate={wholeCodebaseCandidate}
                 rank={0}
                 isWholeCodebase
+                repoPath={repoPath}
+                onGenerate={handleGenerate}
+                isGenerating={generatingCandidate === wholeCodebaseCandidate.name}
               />
             </div>
           )}
@@ -557,6 +630,9 @@ export default function Analyzer() {
                   candidate={candidate}
                   rank={i + 1}
                   isWholeCodebase={false}
+                  repoPath={repoPath}
+                  onGenerate={handleGenerate}
+                  isGenerating={generatingCandidate === candidate.name}
                 />
               ))}
             </div>

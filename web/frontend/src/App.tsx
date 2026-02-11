@@ -9,6 +9,8 @@ import Analyzer from './pages/Analyzer';
 import Drift from './pages/Drift';
 import IRExplorer from './pages/IRExplorer';
 import Generator from './pages/Generator';
+import Libraries from './pages/Libraries';
+import LibraryViewer from './pages/LibraryViewer';
 import Login from './pages/Login';
 import Settings from './pages/Settings';
 import Organizations from './pages/Organizations';
@@ -44,6 +46,8 @@ function App() {
               <Route path="drift" element={<Drift />} />
               <Route path="ir" element={<IRExplorer />} />
               <Route path="generate" element={<Generator />} />
+              <Route path="libraries" element={<Libraries />} />
+              <Route path="libraries/:id" element={<LibraryViewer />} />
               <Route path="settings/api-keys" element={<Settings />} />
               <Route path="orgs" element={<Organizations />} />
               <Route path="orgs/:slug" element={<OrgDetail />} />
