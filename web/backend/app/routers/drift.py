@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException
 from ale.sync.drift import DriftDetector
 from ale.sync.provenance import ProvenanceStore
 
-from app.models.api import (
+from web.backend.app.models.api import (
     DriftCheckAllRequest,
     DriftCheckRequest,
     DriftReportResponse,

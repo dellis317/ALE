@@ -11,7 +11,7 @@ from ale.spec.schema_validator import validate_schema
 from ale.spec.semantic_validator import validate_semantics
 from ale.spec.reference_runner import ReferenceRunner
 
-from app.models.api import (
+from web.backend.app.models.api import (
     ConformanceRequest,
     ConformanceResponse,
     HookResultResponse,
