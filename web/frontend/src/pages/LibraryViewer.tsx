@@ -472,7 +472,11 @@ export default function LibraryViewer() {
                     ? 'Full Codebase'
                     : library.candidate_name}
                 </span>
-                <span className="font-mono text-xs text-gray-400">{library.root_doc}</span>
+                {(library.source_repo_url || library.repo_path) && (
+                  <span className="font-mono text-xs text-gray-400 truncate max-w-xs" title={library.source_repo_url || library.repo_path}>
+                    {library.source_repo_url || library.repo_path}
+                  </span>
+                )}
               </div>
             </div>
           </div>

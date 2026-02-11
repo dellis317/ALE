@@ -1,9 +1,9 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Search, ShieldCheck, Star, Download, Package, ArrowUpDown, ChevronLeft, ChevronRight as ChevronRightIcon, MessageSquareText } from 'lucide-react';
-import { searchRegistry, fetchRegistry } from '../api/client';
-import type { LibraryEntry } from '../types';
+import { Search, ShieldCheck, Star, Download, Package, ArrowUpDown, ChevronLeft, ChevronRight as ChevronRightIcon, MessageSquareText, FolderTree, Calendar } from 'lucide-react';
+import { searchRegistry, fetchRegistry, searchGeneratedLibraries } from '../api/client';
+import type { LibraryEntry, GeneratedLibrary } from '../types';
 import Badge from '../components/Badge';
 import EmptyState from '../components/EmptyState';
 
@@ -125,6 +125,44 @@ function SkeletonCard() {
   );
 }
 
+function GeneratedLibraryCard({ library, onClick }: { library: GeneratedLibrary; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="w-full text-left bg-white rounded-xl border border-indigo-200 p-5 hover:shadow-md hover:border-indigo-300 transition-all duration-200 cursor-pointer group"
+    >
+      <div className="flex items-start justify-between mb-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="w-9 h-9 rounded-lg bg-indigo-50 flex items-center justify-center flex-shrink-0">
+            <FolderTree size={18} className="text-indigo-600" />
+          </div>
+          <div className="min-w-0">
+            <h3 className="font-semibold text-gray-900 group-hover:text-indigo-600 transition-colors truncate">
+              {library.name}
+            </h3>
+            <span className="text-xs text-gray-500">
+              {library.candidate_name === '__whole_codebase__' ? 'Full Codebase' : library.candidate_name}
+            </span>
+          </div>
+        </div>
+        <Badge label="Generated" variant="info" />
+      </div>
+
+      <p className="text-sm text-gray-600 mb-3 line-clamp-2">
+        {library.source_repo_url || library.repo_path}
+      </p>
+
+      <div className="flex items-center gap-4 text-xs text-gray-500 pt-3 border-t border-gray-100">
+        <div className="flex items-center gap-1">
+          <Calendar size={12} />
+          <span>{new Date(library.created_at).toLocaleDateString()}</span>
+        </div>
+        <Badge label="Your Library" variant="success" />
+      </div>
+    </button>
+  );
+}
+
 function sortEntries(entries: LibraryEntry[], sortBy: SortField): LibraryEntry[] {
   return [...entries].sort((a, b) => {
     switch (sortBy) {
@@ -162,6 +200,13 @@ export default function Registry() {
       searchTerm || verifiedOnly || selectedTags.length > 0
         ? searchRegistry({ q: searchTerm, verified_only: verifiedOnly, tags: selectedTags })
         : fetchRegistry().then((entries) => ({ entries, total_count: entries.length })),
+    staleTime: 30000,
+  });
+
+  // Also search generated (saved) libraries so they appear in discovery
+  const { data: generatedLibraries = [] } = useQuery({
+    queryKey: ['generated-libraries-search', searchTerm],
+    queryFn: () => searchGeneratedLibraries(searchTerm),
     staleTime: 30000,
   });
 
@@ -329,8 +374,9 @@ export default function Registry() {
       {/* Results count */}
       {searchResult && (
         <p className="text-xs text-gray-500 mb-4">
-          {filteredAndSorted.length} {filteredAndSorted.length === 1 ? 'library' : 'libraries'} found
-          {filteredAndSorted.length !== searchResult.total_count && ` (${searchResult.total_count} total)`}
+          {filteredAndSorted.length + generatedLibraries.length}{' '}
+          {filteredAndSorted.length + generatedLibraries.length === 1 ? 'library' : 'libraries'} found
+          {generatedLibraries.length > 0 && ` (${generatedLibraries.length} generated, ${filteredAndSorted.length} published)`}
         </p>
       )}
 
@@ -352,17 +398,50 @@ export default function Registry() {
         </div>
       )}
 
-      {/* Results grid */}
-      {!isSearching && paginatedEntries.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {paginatedEntries.map((entry) => (
-            <LibraryCard
-              key={entry.qualified_id}
-              entry={entry}
-              onClick={() => navigate(`/library/${entry.name}/${entry.version}`)}
-            />
-          ))}
+      {/* Generated (saved) libraries */}
+      {!isSearching && generatedLibraries.length > 0 && (
+        <div className="mb-8">
+          <h2 className="text-sm font-semibold text-gray-700 mb-3">
+            Your Generated Libraries ({generatedLibraries.length})
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {generatedLibraries.slice(0, 6).map((lib) => (
+              <GeneratedLibraryCard
+                key={lib.id}
+                library={lib}
+                onClick={() => navigate(`/libraries/${lib.id}`)}
+              />
+            ))}
+          </div>
+          {generatedLibraries.length > 6 && (
+            <button
+              onClick={() => navigate('/libraries')}
+              className="mt-3 text-sm text-indigo-600 hover:text-indigo-800 font-medium"
+            >
+              View all {generatedLibraries.length} generated libraries...
+            </button>
+          )}
         </div>
+      )}
+
+      {/* Published registry results */}
+      {!isSearching && paginatedEntries.length > 0 && (
+        <>
+          {generatedLibraries.length > 0 && (
+            <h2 className="text-sm font-semibold text-gray-700 mb-3">
+              Published Libraries ({filteredAndSorted.length})
+            </h2>
+          )}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {paginatedEntries.map((entry) => (
+              <LibraryCard
+                key={entry.qualified_id}
+                entry={entry}
+                onClick={() => navigate(`/library/${entry.name}/${entry.version}`)}
+              />
+            ))}
+          </div>
+        </>
       )}
 
       {/* Pagination */}
@@ -391,13 +470,13 @@ export default function Registry() {
       )}
 
       {/* Empty state */}
-      {!isSearching && !searchError && filteredAndSorted.length === 0 && (
+      {!isSearching && !searchError && filteredAndSorted.length === 0 && generatedLibraries.length === 0 && (
         <EmptyState
           title="No libraries found"
           description={
             searchTerm
               ? `No libraries match "${searchTerm}". Try adjusting your search or filters.`
-              : 'No libraries in the registry yet. Libraries will appear here once they are published.'
+              : 'No libraries yet. Go to the Analyze tab to generate libraries from a repository, or publish libraries to the registry.'
           }
           icon={Package}
         />

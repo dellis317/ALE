@@ -423,6 +423,133 @@ async def publish_from_editor(request: PublishFromEditorRequest):
 # ---------------------------------------------------------------------------
 
 
+def _analyze_source_code(
+    repo_path: str,
+    source_files: list[str],
+) -> dict:
+    """Read source files and extract meaningful code structure for instructions.
+
+    Returns a dict with:
+    - classes: list of {name, methods, docstring, file}
+    - functions: list of {name, params, docstring, file}
+    - imports: list of external package names
+    - patterns: list of detected design patterns/frameworks
+    - code_sketch: pseudocode summary of what the code does
+    """
+    classes: list[dict] = []
+    functions: list[dict] = []
+    imports: set[str] = set()
+    patterns: list[str] = []
+
+    repo_root = Path(repo_path)
+
+    for rel_path in source_files[:30]:
+        # Resolve: source_files should be relative paths
+        abs_path = repo_root / rel_path
+        if not abs_path.exists():
+            # Try as absolute path (backwards compat)
+            abs_path = Path(rel_path)
+        if not abs_path.exists() or not abs_path.is_file():
+            continue
+
+        try:
+            content = abs_path.read_text(errors="replace")
+        except Exception:
+            continue
+
+        suffix = abs_path.suffix.lower()
+
+        # Extract function/class signatures based on language
+        for line in content.splitlines():
+            stripped = line.strip()
+
+            # Python
+            if suffix == ".py":
+                if stripped.startswith("import ") or stripped.startswith("from "):
+                    pkg = stripped.split()[1].split(".")[0]
+                    if not pkg.startswith("_"):
+                        imports.add(pkg)
+                if stripped.startswith("class ") and ":" in stripped:
+                    cls_name = stripped.split("(")[0].replace("class ", "").strip().rstrip(":")
+                    # Extract methods from indented block
+                    classes.append({
+                        "name": cls_name,
+                        "file": rel_path,
+                        "signature": stripped.rstrip(":"),
+                    })
+                if stripped.startswith("def ") and "(" in stripped:
+                    func_sig = stripped.rstrip(":").strip()
+                    func_name = func_sig.split("(")[0].replace("def ", "").strip()
+                    if not func_name.startswith("_"):
+                        functions.append({
+                            "name": func_name,
+                            "file": rel_path,
+                            "signature": func_sig,
+                        })
+                if stripped.startswith("async def ") and "(" in stripped:
+                    func_sig = stripped.rstrip(":").strip()
+                    func_name = func_sig.split("(")[0].replace("async def ", "").strip()
+                    if not func_name.startswith("_"):
+                        functions.append({
+                            "name": func_name,
+                            "file": rel_path,
+                            "signature": func_sig,
+                        })
+
+            # JavaScript / TypeScript
+            elif suffix in (".js", ".jsx", ".ts", ".tsx"):
+                if "import " in stripped and " from " in stripped:
+                    parts = stripped.split(" from ")
+                    if len(parts) == 2:
+                        pkg = parts[1].strip().strip("'\"").strip(";")
+                        if not pkg.startswith("."):
+                            imports.add(pkg.split("/")[0])
+                if stripped.startswith("export function ") or stripped.startswith("function "):
+                    sig = stripped.split("{")[0].strip()
+                    fname = sig.replace("export ", "").replace("function ", "").split("(")[0].strip()
+                    functions.append({"name": fname, "file": rel_path, "signature": sig})
+                if stripped.startswith("export class ") or stripped.startswith("class "):
+                    sig = stripped.split("{")[0].strip()
+                    cname = sig.replace("export ", "").replace("class ", "").split(" ")[0].strip()
+                    classes.append({"name": cname, "file": rel_path, "signature": sig})
+
+            # Go
+            elif suffix == ".go":
+                if stripped.startswith("func ") and "(" in stripped:
+                    sig = stripped.split("{")[0].strip()
+                    functions.append({"name": sig.split("(")[0].replace("func ", "").strip(), "file": rel_path, "signature": sig})
+                if stripped.startswith("type ") and "struct" in stripped:
+                    tname = stripped.split(" ")[1] if len(stripped.split(" ")) > 1 else "Unknown"
+                    classes.append({"name": tname, "file": rel_path, "signature": stripped.split("{")[0].strip()})
+
+        # Detect patterns
+        if "fastapi" in content.lower() or "flask" in content.lower() or "express" in content.lower():
+            if "REST API / Web Framework" not in patterns:
+                patterns.append("REST API / Web Framework")
+        if "sqlalchemy" in content.lower() or "prisma" in content.lower() or "orm" in content.lower():
+            if "ORM / Database Layer" not in patterns:
+                patterns.append("ORM / Database Layer")
+        if "celery" in content.lower() or "queue" in content.lower():
+            if "Task Queue / Background Jobs" not in patterns:
+                patterns.append("Task Queue / Background Jobs")
+        if "websocket" in content.lower():
+            if "WebSocket" not in patterns:
+                patterns.append("WebSocket")
+        if "@router" in content or "@app.route" in content or "router." in content:
+            if "Router / Endpoint Definitions" not in patterns:
+                patterns.append("Router / Endpoint Definitions")
+        if "dataclass" in content or "BaseModel" in content or "interface " in content:
+            if "Data Models / Schema Definitions" not in patterns:
+                patterns.append("Data Models / Schema Definitions")
+
+    return {
+        "classes": classes[:50],
+        "functions": functions[:80],
+        "imports": sorted(imports),
+        "patterns": patterns,
+    }
+
+
 def _build_library_structure(
     name: str,
     slug: str,
@@ -430,26 +557,16 @@ def _build_library_structure(
     source_files: list[str],
     entry_points: list[str],
     tags: list[str],
-    repo_path: str,
+    source_repo_url: str,
     candidate_name: str,
+    code_analysis: dict | None = None,
 ) -> LibraryDocNodeResponse:
     """Build a hierarchical document tree for a generated library.
 
-    Structure:
-    - <name>_library.md (root index/summary)
-      - overview.md (detailed overview)
-      - architecture.md (architecture & design)
-      - instructions.md (implementation guide)
-        - step_1_setup.md
-        - step_2_core_logic.md
-        - step_3_integration.md
-      - guardrails.md (rules & constraints)
-      - validation.md (testing criteria)
-      - dependencies.md (external & internal deps)
-      - versioning.md (version history & changelog)
-      - audit_trail.md (provenance tracking)
-      - security.md (security considerations)
-      - variables.md (configuration & environment)
+    When ``code_analysis`` is provided (from ``_analyze_source_code``),
+    instructions are derived from the actual code structure rather than
+    generic templates.  ``source_repo_url`` is the display URL/path for
+    the source repository (never a temp clone directory).
     """
     now = datetime.now(timezone.utc).isoformat()
 
@@ -457,61 +574,139 @@ def _build_library_structure(
     ep_list = "\n".join(f"- `{ep}`" for ep in entry_points[:20]) or "- *(none detected)*"
     tags_inline = ", ".join(tags) if tags else "general"
 
-    # Instruction sub-nodes
+    # Use code analysis to build richer content
+    ca = code_analysis or {"classes": [], "functions": [], "imports": [], "patterns": []}
+
+    # Build a code sketch from actual signatures
+    class_sketch = ""
+    if ca["classes"]:
+        lines = []
+        for cls in ca["classes"][:15]:
+            lines.append(f"- **`{cls['name']}`** (in `{cls['file']}`)")
+        class_sketch = "\n".join(lines)
+
+    func_sketch = ""
+    if ca["functions"]:
+        lines = []
+        for fn in ca["functions"][:20]:
+            lines.append(f"- `{fn['signature']}`  *(in `{fn['file']}`)*")
+        func_sketch = "\n".join(lines)
+
+    imports_list = ""
+    if ca["imports"]:
+        imports_list = "\n".join(f"- `{pkg}`" for pkg in ca["imports"])
+
+    patterns_list = ""
+    if ca["patterns"]:
+        patterns_list = "\n".join(f"- {p}" for p in ca["patterns"])
+
+    # ---- Build instruction steps from actual code ----
+
+    # Step 1: Data models & types (classes found)
+    step1_content = f"""# Step 1: Define Data Models & Types
+
+## Objective
+Recreate the data models and type definitions used by **{name}**.
+
+## What to Build
+"""
+    if class_sketch:
+        step1_content += f"""The source code defines these key classes/types:
+
+{class_sketch}
+
+Implement equivalent data structures in your target project's language,
+following its conventions for models (dataclasses, Pydantic, TypeScript
+interfaces, Go structs, etc.).
+"""
+    else:
+        step1_content += """No explicit class definitions were detected. Define any data
+structures needed based on the entry points and function signatures below.
+"""
+    step1_content += """
+## Guidelines
+- Use the target project's idiomatic approach for data modeling
+- Ensure all fields have appropriate types and validation
+- Add serialization support if the data crosses API boundaries
+"""
+
+    # Step 2: Core functions/logic
+    step2_content = f"""# Step 2: Implement Core Logic
+
+## Objective
+Build the primary functions and business logic for **{name}**.
+
+## Functions to Implement
+"""
+    if func_sketch:
+        step2_content += f"""The source code exposes these public functions:
+
+{func_sketch}
+
+Reimplement each function's behavior in your target language. The
+signatures above show the expected inputs; adapt parameter names and
+types to your project's conventions.
+"""
+    else:
+        step2_content += f"""Implement the logic corresponding to these entry points:
+
+{ep_list}
+"""
+    step2_content += """
+## Guidelines
+- Each function should have a single clear responsibility
+- Include error handling consistent with your project's patterns
+- Write unit tests alongside each function
+"""
+
+    # Step 3: Integration & wiring
+    step3_content = f"""# Step 3: Integration & Wiring
+
+## Objective
+Connect all modules and expose the public interface for **{name}**.
+"""
+    if ca["patterns"]:
+        step3_content += f"""
+## Detected Patterns
+The source code uses these architectural patterns:
+
+{patterns_list}
+
+Wire up your implementation to follow the same patterns using your
+target framework's conventions.
+"""
+    if ca["imports"]:
+        step3_content += f"""
+## External Dependencies
+The source relies on these packages -- find equivalents in your ecosystem:
+
+{imports_list}
+"""
+    step3_content += """
+## Actions
+1. Create the public API surface (exports, endpoints, CLI commands)
+2. Configure dependency injection or wiring for internal modules
+3. Add integration tests that exercise the full workflow
+4. Verify all entry points are reachable end-to-end
+"""
+
     instruction_children = [
         LibraryDocNodeResponse(
             id=str(uuid.uuid4()),
-            title="Step 1: Project Setup",
-            slug=f"{slug}/instructions/step_1_setup",
+            title="Step 1: Data Models & Types",
+            slug=f"{slug}/instructions/step_1_models",
             type="subsection",
-            summary="Initialize the project structure and install dependencies.",
-            content=f"""# Step 1: Project Setup
-
-## Objective
-Set up the foundational project structure for **{name}**.
-
-## Actions
-1. Create the project directory and initialize version control
-2. Set up the dependency manifest (package.json, requirements.txt, etc.)
-3. Configure linting, formatting, and pre-commit hooks
-4. Establish the directory layout following the architecture guide
-
-## Source Files Reference
-{files_list}
-
-## Notes
-- Follow the target project's existing conventions for structure
-- Reuse existing build tooling where available
-""",
+            summary="Define data models and type structures from the analyzed code.",
+            content=step1_content,
             children=[],
         ),
         LibraryDocNodeResponse(
             id=str(uuid.uuid4()),
-            title="Step 2: Core Logic Implementation",
+            title="Step 2: Core Logic",
             slug=f"{slug}/instructions/step_2_core_logic",
             type="subsection",
-            summary="Implement the primary business logic and data models.",
-            content=f"""# Step 2: Core Logic Implementation
-
-## Objective
-Build the core functionality of **{name}**.
-
-## Entry Points
-{ep_list}
-
-## Actions
-1. Define data models and types
-2. Implement primary functions/classes from the entry points above
-3. Add internal error handling and logging
-4. Write unit tests for each module
-
-## Tags
-{tags_inline}
-
-## Notes
-- Keep functions focused and composable
-- Ensure type safety throughout
-""",
+            summary="Implement the primary functions and business logic.",
+            content=step2_content,
             children=[],
         ),
         LibraryDocNodeResponse(
@@ -519,25 +714,46 @@ Build the core functionality of **{name}**.
             title="Step 3: Integration & Wiring",
             slug=f"{slug}/instructions/step_3_integration",
             type="subsection",
-            summary="Connect components, add API surfaces, and finalize exports.",
-            content=f"""# Step 3: Integration & Wiring
-
-## Objective
-Wire up all components and expose the public API for **{name}**.
-
-## Actions
-1. Create the public API surface (exports, endpoints, CLI commands)
-2. Integrate with external dependencies
-3. Add integration tests
-4. Document public interfaces
-
-## Notes
-- Verify all entry points are reachable
-- Run the full test suite before marking complete
-""",
+            summary="Connect components, wire dependencies, and expose public API.",
+            content=step3_content,
             children=[],
         ),
     ]
+
+    # ---- Build instruction steps table from actual steps ----
+    step_table = "\n".join(
+        f"| {i+1} | {child.title} | {child.summary} |"
+        for i, child in enumerate(instruction_children)
+    )
+
+    # ---- Architecture section with real data ----
+    arch_content = f"""# {name} -- Architecture
+
+## Detected Patterns
+"""
+    if patterns_list:
+        arch_content += patterns_list + "\n"
+    else:
+        arch_content += "- *(Analyze source for architectural patterns)*\n"
+
+    arch_content += f"""
+## Module Structure
+{files_list}
+"""
+    if class_sketch:
+        arch_content += f"""
+## Key Types
+{class_sketch}
+"""
+    arch_content += f"""
+## Entry Points
+{ep_list}
+
+## Data Flow
+1. Input enters through the defined entry points
+2. Core logic processes data via the functions and classes above
+3. Results are returned through the public API surface
+"""
 
     # Build the sections
     sections = [
@@ -553,19 +769,18 @@ Wire up all components and expose the public API for **{name}**.
 {description or 'A library extracted from the analyzed codebase.'}
 
 ## Scope
-This library encapsulates the functionality identified in the **{candidate_name}** candidate from the repository at `{repo_path}`.
+This library encapsulates the functionality identified in the **{candidate_name}** candidate.
+
+## Source Reference
+- **Repository**: `{source_repo_url}`
+- **File count**: {len(source_files)}
+- **Entry points**: {len(entry_points)}
 
 ## Key Capabilities
 {tags_inline}
 
-## Source Files ({len(source_files)} total)
-{files_list}
-
-## Entry Points
-{ep_list}
-
 ## When to Use
-Use this library when you need the functionality provided by the {candidate_name} component. It is designed to be integrated into projects that share similar patterns and dependencies.
+Use this library's instructions to rebuild {candidate_name} functionality natively in your own project. The instructions describe *what* to build and *how* the pieces connect -- implement them in your target language and framework.
 """,
             children=[],
         ),
@@ -574,26 +789,8 @@ Use this library when you need the functionality provided by the {candidate_name
             title="Architecture",
             slug=f"{slug}/architecture",
             type="section",
-            summary="Architecture and design patterns.",
-            content=f"""# {name} -- Architecture
-
-## Design Principles
-- **Separation of concerns**: Each module handles a single responsibility
-- **Composability**: Functions and classes are designed to be combined
-- **Minimal dependencies**: Only essential external packages are used
-
-## Module Structure
-{files_list}
-
-## Data Flow
-1. Input enters through the defined entry points
-2. Core logic processes the data through internal modules
-3. Results are returned through the public API surface
-
-## Dependencies
-- External packages used by the source codebase
-- Internal modules referenced across the component boundary
-""",
+            summary="Architecture and design patterns from source analysis.",
+            content=arch_content,
             children=[],
         ),
         LibraryDocNodeResponse(
@@ -601,19 +798,17 @@ Use this library when you need the functionality provided by the {candidate_name
             title="Instructions",
             slug=f"{slug}/instructions",
             type="section",
-            summary="Step-by-step implementation guide.",
+            summary="Step-by-step implementation guide derived from source code analysis.",
             content=f"""# {name} -- Implementation Instructions
 
 ## Overview
-This section provides a step-by-step guide for implementing the **{name}** library from the extracted component.
+This section provides a step-by-step guide for rebuilding the **{name}** functionality in your own project. Each step is informed by analysis of the source code's actual structure, classes, and functions.
 
 ## Steps
 
 | Step | Title | Description |
 |------|-------|-------------|
-| 1 | Project Setup | Initialize structure and dependencies |
-| 2 | Core Logic | Implement primary business logic |
-| 3 | Integration | Connect components and finalize API |
+{step_table}
 
 See each sub-document for detailed instructions.
 """,
@@ -628,13 +823,14 @@ See each sub-document for detailed instructions.
             content=f"""# {name} -- Guardrails
 
 ## Mandatory Rules (MUST)
-- **Follow existing code style**: Match the target project's formatting, naming conventions, and patterns
+- **Native implementation**: Implement all functionality in the target project's primary language -- never copy-paste source code
+- **Integration contract**: The result should look like it was hand-written for your project
 - **Error handling**: Include robust error handling appropriate to the target project's patterns
-- **Type safety**: Maintain type annotations/hints consistent with the source
+- **No hardcoded environment values**: Ports, paths, hostnames, and secrets must be configurable
 
 ## Recommended Rules (SHOULD)
 - **Reuse dependencies**: Use the target project's existing packages where possible
-- **Documentation**: Add docstrings/comments for public APIs
+- **Match code style**: Follow the target project's formatting, naming, and structural conventions
 - **Test coverage**: Aim for >80% coverage on core logic
 
 ## Optional Rules (MAY)
@@ -654,13 +850,13 @@ See each sub-document for detailed instructions.
 ## Test Strategy
 1. **Unit tests**: Cover each function/class in isolation
 2. **Integration tests**: Verify component interactions
-3. **Conformance checks**: Run ALE conformance validation
+3. **Conformance checks**: Validate against the source repo as a reference
 
 ## Acceptance Criteria
 - All unit tests pass
 - Integration tests cover primary workflows
-- No schema or semantic validation errors
 - Code style checks pass (linting, formatting)
+- Behaviour matches the source entry points
 
 ## Test Approach
 | Criterion | Method | Expected Result |
@@ -668,7 +864,6 @@ See each sub-document for detailed instructions.
 | Core functionality | Unit tests | All tests pass |
 | API contracts | Integration tests | Correct inputs/outputs |
 | Error handling | Negative tests | Graceful failure |
-| Performance | Benchmark (optional) | Within acceptable limits |
 """,
             children=[],
         ),
@@ -681,17 +876,15 @@ See each sub-document for detailed instructions.
             content=f"""# {name} -- Dependencies
 
 ## External Dependencies
-These are packages from the source codebase that this library relies on.
-Review and include in your project's dependency manifest.
+{imports_list if imports_list else '*(None detected -- review source for runtime dependencies)*'}
 
-*(Populated from analysis of the source repository)*
+Find equivalent packages in your target ecosystem and add them to your
+dependency manifest.
 
-## Internal Dependencies
-Modules within the component that reference each other.
-
+## Source Files (for reference)
 {files_list}
 
-## Compatibility Targets
+## Compatibility Notes
 - Ensure compatibility with the target project's runtime environment
 - Check version constraints for all external dependencies
 """,
@@ -720,8 +913,8 @@ This library follows [Semantic Versioning](https://semver.org/):
 
 ### v1.0.0 ({now[:10]})
 - Initial library generation from {candidate_name}
-- Source repository: `{repo_path}`
-- {len(source_files)} source files extracted
+- Source repository: `{source_repo_url}`
+- {len(source_files)} source files analysed
 - {len(entry_points)} entry points identified
 """,
             children=[],
@@ -738,7 +931,7 @@ This library follows [Semantic Versioning](https://semver.org/):
 | Field | Value |
 |-------|-------|
 | Generated At | {now} |
-| Source Repository | `{repo_path}` |
+| Source Repository | `{source_repo_url}` |
 | Candidate | {candidate_name} |
 | Source Files | {len(source_files)} |
 | Entry Points | {len(entry_points)} |
@@ -749,7 +942,7 @@ This library follows [Semantic Versioning](https://semver.org/):
 
 ## Compliance Notes
 - This library was generated using ALE's automated analysis pipeline
-- All source files were identified through static analysis
+- Instructions are derived from static analysis of the source code
 - Review the Security section for any flagged concerns
 """,
             children=[],
@@ -830,13 +1023,13 @@ List any configuration files needed:
         summary=description or f"Agentic library generated from {candidate_name}.",
         content=f"""# {name} Library
 
-> Auto-generated agentic library from the **{candidate_name}** analysis candidate.
+> Agentic build instructions generated from the **{candidate_name}** analysis candidate.
 
 ## Summary
 {description or 'A library extracted from the analyzed codebase.'}
 
-## Source
-- **Repository**: `{repo_path}`
+## Source Reference
+- **Repository**: `{source_repo_url}`
 - **Candidate**: {candidate_name}
 - **Generated**: {now}
 - **Version**: 1.0.0
@@ -848,11 +1041,11 @@ List any configuration files needed:
 {section_toc}
 
 ## Quick Start
-1. Review the **Overview** to understand the library's purpose
-2. Follow the **Instructions** step-by-step to implement
-3. Check **Guardrails** for rules and constraints
+1. Review the **Overview** to understand what this library rebuilds
+2. Follow the **Instructions** step-by-step to implement in your project
+3. Check **Guardrails** for mandatory rules and constraints
 4. Run **Validation** criteria to verify your implementation
-5. Consult **Security** and **Variables** for deployment readiness
+5. Use the source repository as a last-mile reference to validate your build
 
 ## Tags
 {tags_inline}
@@ -869,19 +1062,37 @@ List any configuration files needed:
     summary="Generate a hierarchical library from an analysis candidate",
 )
 async def generate_hierarchical_library(request: GenerateHierarchicalLibraryRequest):
-    """Generate a full hierarchical library document structure from an analysis candidate."""
+    """Generate a full hierarchical library document structure from an analysis candidate.
+
+    Reads the actual source files to produce code-aware instruction steps
+    rather than generic templates.  Stores the ``source_repo_url`` (the
+    original repo URL or local path) instead of any temporary clone path.
+    """
     if not request.repo_path.strip():
         raise HTTPException(status_code=400, detail="repo_path is required")
     if not request.candidate_name.strip():
         raise HTTPException(status_code=400, detail="candidate_name is required")
 
+    # Determine the display URL for the source repo.
+    # Prefer the explicit source_repo_url from the frontend; fall back to repo_path.
+    source_repo_url = (request.source_repo_url or "").strip() or request.repo_path
+
     # Derive a display name
     raw_name = request.candidate_name
     if raw_name == "__whole_codebase__":
-        # Use the repo directory name
-        raw_name = Path(request.repo_path).name or "codebase"
+        # Use the repo directory name (strip temp prefixes)
+        dir_name = Path(request.repo_path).name or "codebase"
+        # If it looks like a temp clone name (ale_*), use a generic fallback
+        if dir_name.startswith("ale_"):
+            # Try to derive from the URL
+            url_parts = source_repo_url.rstrip("/").split("/")
+            dir_name = url_parts[-1].replace(".git", "") if url_parts else "codebase"
+        raw_name = dir_name
     display_name = raw_name.replace("_", " ").replace("-", " ").title()
     slug = _slugify(raw_name) + "_library"
+
+    # Analyze the actual source code for richer instructions
+    code_analysis = _analyze_source_code(request.repo_path, request.source_files)
 
     structure = _build_library_structure(
         name=display_name,
@@ -890,8 +1101,9 @@ async def generate_hierarchical_library(request: GenerateHierarchicalLibraryRequ
         source_files=request.source_files,
         entry_points=request.entry_points,
         tags=request.tags,
-        repo_path=request.repo_path,
+        source_repo_url=source_repo_url,
         candidate_name=request.candidate_name,
+        code_analysis=code_analysis,
     )
 
     now = datetime.now(timezone.utc).isoformat()
@@ -906,9 +1118,10 @@ async def generate_hierarchical_library(request: GenerateHierarchicalLibraryRequ
         created_at=now,
         updated_at=now,
         structure=structure,
+        source_repo_url=source_repo_url,
     )
 
-    # Persist to disk — include source commit for future update detection
+    # Persist to disk — include source commit and source_repo_url
     libs_dir = _ensure_libraries_dir()
     lib_path = libs_dir / f"{library_id}.json"
     lib_data = library.model_dump()
@@ -940,6 +1153,50 @@ async def list_generated_libraries():
             libraries.append(lib)
         except (json.JSONDecodeError, KeyError):
             continue
+
+    libraries.sort(key=lambda d: d.get("updated_at", ""), reverse=True)
+    return [GeneratedLibraryResponse(**lib) for lib in libraries]
+
+
+@router.get(
+    "/libraries/search",
+    response_model=list[GeneratedLibraryResponse],
+    summary="Search generated libraries by text query",
+)
+async def search_generated_libraries(
+    text: str = "",
+):
+    """Search generated libraries by name, candidate, or repo URL.
+
+    Returns libraries whose name, candidate_name, or source_repo_url
+    contain the search text (case-insensitive).  Returns all libraries
+    if no text is provided.
+    """
+    libs_dir = _ensure_libraries_dir()
+    libraries: list[dict] = []
+    query = text.strip().lower()
+
+    for lib_file in libs_dir.glob("*.json"):
+        try:
+            with open(lib_file) as f:
+                lib = json.load(f)
+        except (json.JSONDecodeError, KeyError):
+            continue
+
+        if not query:
+            libraries.append(lib)
+            continue
+
+        # Search across multiple fields
+        searchable = " ".join([
+            lib.get("name", ""),
+            lib.get("candidate_name", ""),
+            lib.get("source_repo_url", ""),
+            lib.get("repo_path", ""),
+        ]).lower()
+
+        if query in searchable:
+            libraries.append(lib)
 
     libraries.sort(key=lambda d: d.get("updated_at", ""), reverse=True)
     return [GeneratedLibraryResponse(**lib) for lib in libraries]
@@ -1116,6 +1373,9 @@ async def update_library(library_id: str):
             detail=f"Source repository path is not accessible: {repo_path}",
         )
 
+    # Recover the source_repo_url from stored metadata
+    source_repo_url = lib.get("source_repo_url", repo_path)
+
     # Extract the original generation parameters from the stored library
     raw_name = candidate_name
     if raw_name == "__whole_codebase__":
@@ -1130,6 +1390,9 @@ async def update_library(library_id: str):
     # Capture current commit for future update checks
     current_commit = _get_repo_head_commit(repo_path)
 
+    # Analyze actual source code for richer instructions
+    code_analysis = _analyze_source_code(repo_path, source_files)
+
     structure = _build_library_structure(
         name=display_name,
         slug=slug,
@@ -1137,8 +1400,9 @@ async def update_library(library_id: str):
         source_files=source_files,
         entry_points=[],
         tags=[],
-        repo_path=repo_path,
+        source_repo_url=source_repo_url,
         candidate_name=candidate_name,
+        code_analysis=code_analysis,
     )
 
     now = datetime.now(timezone.utc).isoformat()
@@ -1152,6 +1416,7 @@ async def update_library(library_id: str):
         created_at=lib.get("created_at", now),
         updated_at=now,
         structure=structure,
+        source_repo_url=source_repo_url,
     )
 
     # Persist (overwrite) to disk
@@ -1183,6 +1448,7 @@ async def create_from_latest(library_id: str, request: CreateFromLatestRequest):
     lib = _load_library(library_id)
     repo_path = lib.get("repo_path", "")
     candidate_name = lib.get("candidate_name", "")
+    source_repo_url = lib.get("source_repo_url", repo_path)
 
     if not repo_path or not Path(repo_path).is_dir():
         raise HTTPException(
@@ -1209,6 +1475,8 @@ async def create_from_latest(library_id: str, request: CreateFromLatestRequest):
 
     current_commit = _get_repo_head_commit(repo_path)
 
+    code_analysis = _analyze_source_code(repo_path, source_files)
+
     structure = _build_library_structure(
         name=display_name,
         slug=slug,
@@ -1216,8 +1484,9 @@ async def create_from_latest(library_id: str, request: CreateFromLatestRequest):
         source_files=source_files,
         entry_points=[],
         tags=[],
-        repo_path=repo_path,
+        source_repo_url=source_repo_url,
         candidate_name=candidate_name,
+        code_analysis=code_analysis,
     )
 
     new_library_id = str(uuid.uuid4())
@@ -1231,6 +1500,7 @@ async def create_from_latest(library_id: str, request: CreateFromLatestRequest):
         created_at=now.isoformat(),
         updated_at=now.isoformat(),
         structure=structure,
+        source_repo_url=source_repo_url,
     )
 
     # Persist as a new file

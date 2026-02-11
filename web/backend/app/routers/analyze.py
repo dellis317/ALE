@@ -111,6 +111,7 @@ async def analyze_repo(request: AnalyzeRequest):
     return AnalyzeResponse(
         summary=_summary_to_response(result.summary),
         candidates=[_candidate_to_response(c) for c in result.candidates],
+        source_repo_url=getattr(result, "source_repo_url", ""),
     )
 
 
