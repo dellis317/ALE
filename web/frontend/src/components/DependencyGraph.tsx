@@ -109,7 +109,6 @@ export default function DependencyGraph({ imports, modulePath }: DependencyGraph
 
     // Layout calculation
     const width = containerWidth;
-    const nodeRadius = 28;
     const verticalSpacing = 70;
     const leftColumnX = width * 0.2;
     const centerX = width * 0.5;

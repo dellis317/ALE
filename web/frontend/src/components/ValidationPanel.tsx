@@ -61,7 +61,6 @@ export default function ValidationPanel({ yamlContent }: ValidationPanelProps) {
     return null;
   }
 
-  const hasErrors = data.schema_errors.length > 0 || data.semantic_errors.length > 0;
   const hasWarnings = data.semantic_warnings.length > 0;
 
   return (

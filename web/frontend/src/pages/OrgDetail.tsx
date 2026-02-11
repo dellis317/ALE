@@ -17,7 +17,6 @@ import {
   Loader2,
   BookOpen,
   UserPlus,
-  Shield,
 } from 'lucide-react';
 import {
   getOrgDashboard,
@@ -30,7 +29,7 @@ import {
   removeOrgRepo,
   scanOrgRepo,
 } from '../api/client';
-import type { OrgMember, OrgRepo, OrgDashboard } from '../types';
+import type { OrgMember, OrgRepo } from '../types';
 
 type TabKey = 'dashboard' | 'members' | 'repos';
 
@@ -64,22 +63,6 @@ function ScanStatusBadge({ status }: { status: string }) {
     >
       <Icon size={12} className={status === 'scanning' ? 'animate-spin' : ''} />
       {status.charAt(0).toUpperCase() + status.slice(1)}
-    </span>
-  );
-}
-
-function RoleBadge({ role }: { role: string }) {
-  const config: Record<string, string> = {
-    admin: 'bg-indigo-50 text-indigo-700 border-indigo-200',
-    member: 'bg-gray-50 text-gray-700 border-gray-200',
-    viewer: 'bg-gray-50 text-gray-500 border-gray-200',
-  };
-
-  return (
-    <span
-      className={`inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-full border ${config[role] || config.viewer}`}
-    >
-      {role.charAt(0).toUpperCase() + role.slice(1)}
     </span>
   );
 }

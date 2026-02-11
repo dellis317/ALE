@@ -14,7 +14,6 @@ import {
   History,
   ListChecks,
   AlertTriangle,
-  Code2,
   ClipboardCheck,
 } from 'lucide-react';
 import { getLibrary, getLibraryVersions } from '../api/client';
@@ -295,7 +294,7 @@ export default function LibraryDetail() {
 
   // Extract instructions, guardrails, and validation from library data if available
   // These would come from the agentic_library source data
-  const libAny = library as Record<string, unknown>;
+  const libAny = library as unknown as Record<string, unknown>;
   const instructions: InstructionStep[] = Array.isArray(libAny.instructions)
     ? (libAny.instructions as InstructionStep[])
     : [];

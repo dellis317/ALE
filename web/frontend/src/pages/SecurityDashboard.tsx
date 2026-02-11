@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Shield,
   Webhook,
   Puzzle,
   AlertTriangle,
@@ -41,7 +40,6 @@ type TabId = 'audit' | 'webhooks' | 'plugins';
 
 export default function SecurityDashboard() {
   const [activeTab, setActiveTab] = useState<TabId>('audit');
-  const queryClient = useQueryClient();
 
   // Dashboard stats
   const { data: dashboard, isLoading: dashLoading } = useQuery({
