@@ -763,3 +763,144 @@ class LLMStatusResponse(BaseModel):
     configured: bool
     model: str = ""
     message: str = ""
+
+
+# ---------------------------------------------------------------------------
+# Security & Audit models
+# ---------------------------------------------------------------------------
+
+
+class AuditEntryResponse(BaseModel):
+    """A single audit log entry."""
+
+    id: str
+    timestamp: str
+    actor: str
+    action: str
+    resource_type: str
+    resource_id: str
+    details: dict = Field(default_factory=dict)
+    ip_address: str = ""
+    user_agent: str = ""
+    success: bool = True
+
+
+class AuditExportResponse(BaseModel):
+    """Exported audit log content."""
+
+    format: str
+    content: str
+    record_count: int = 0
+
+
+# ---------------------------------------------------------------------------
+# Webhook models
+# ---------------------------------------------------------------------------
+
+
+class WebhookResponse(BaseModel):
+    """Public representation of a webhook."""
+
+    id: str
+    name: str
+    url: str
+    events: list[str] = Field(default_factory=list)
+    active: bool = True
+    created_at: str = ""
+    updated_at: str = ""
+
+
+class CreateWebhookRequest(BaseModel):
+    """Request body for registering a webhook."""
+
+    name: str
+    url: str
+    events: list[str] = Field(default_factory=list)
+    secret: str = ""
+
+
+class UpdateWebhookRequest(BaseModel):
+    """Request body for updating a webhook."""
+
+    name: str = ""
+    url: str = ""
+    events: list[str] = Field(default_factory=list)
+
+
+class ToggleWebhookRequest(BaseModel):
+    """Request body for toggling a webhook."""
+
+    active: bool
+
+
+class WebhookDeliveryResponse(BaseModel):
+    """Record of a webhook delivery attempt."""
+
+    id: str
+    webhook_id: str
+    event: str
+    payload: dict = Field(default_factory=dict)
+    response_status: int = 0
+    response_body: str = ""
+    success: bool = False
+    delivered_at: str = ""
+    duration_ms: int = 0
+
+
+# ---------------------------------------------------------------------------
+# Plugin models
+# ---------------------------------------------------------------------------
+
+
+class PluginResponse(BaseModel):
+    """Public representation of a plugin."""
+
+    id: str
+    name: str
+    description: str = ""
+    hooks: list[str] = Field(default_factory=list)
+    config: dict = Field(default_factory=dict)
+    enabled: bool = True
+    created_at: str = ""
+
+
+class CreatePluginRequest(BaseModel):
+    """Request body for registering a plugin."""
+
+    name: str
+    description: str = ""
+    hooks: list[str] = Field(default_factory=list)
+    config: dict = Field(default_factory=dict)
+
+
+class UpdatePluginRequest(BaseModel):
+    """Request body for updating a plugin."""
+
+    name: str = ""
+    description: str = ""
+    hooks: list[str] = Field(default_factory=list)
+    config: dict = Field(default_factory=dict)
+
+
+class TogglePluginRequest(BaseModel):
+    """Request body for toggling a plugin."""
+
+    enabled: bool
+
+
+# ---------------------------------------------------------------------------
+# Security Dashboard
+# ---------------------------------------------------------------------------
+
+
+class SecurityDashboardResponse(BaseModel):
+    """Aggregated security posture overview."""
+
+    total_events: int = 0
+    events_today: int = 0
+    active_webhooks: int = 0
+    total_webhooks: int = 0
+    enabled_plugins: int = 0
+    total_plugins: int = 0
+    recent_events: list[AuditEntryResponse] = Field(default_factory=list)
+    failed_deliveries_24h: int = 0

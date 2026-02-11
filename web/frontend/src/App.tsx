@@ -16,6 +16,7 @@ import OrgDetail from './pages/OrgDetail';
 import LLMDashboard from './pages/LLMDashboard';
 import Policies from './pages/Policies';
 import Approvals from './pages/Approvals';
+import SecurityDashboard from './pages/SecurityDashboard';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -47,6 +48,7 @@ function App() {
               <Route path="llm" element={<LLMDashboard />} />
               <Route path="policies" element={<Policies />} />
               <Route path="approvals" element={<Approvals />} />
+              <Route path="security" element={<SecurityDashboard />} />
             </Route>
           </Routes>
         </BrowserRouter>

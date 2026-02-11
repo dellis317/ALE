@@ -390,3 +390,60 @@ export interface LLMGuardrailSuggestion {
   tokens_used: number;
   cost_estimate: number;
 }
+
+// Security & Audit types
+export interface AuditEntry {
+  id: string;
+  timestamp: string;
+  actor: string;
+  action: string;
+  resource_type: string;
+  resource_id: string;
+  details: Record<string, unknown>;
+  ip_address: string;
+  user_agent: string;
+  success: boolean;
+}
+
+export interface Webhook {
+  id: string;
+  name: string;
+  url: string;
+  events: string[];
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WebhookDelivery {
+  id: string;
+  webhook_id: string;
+  event: string;
+  payload: Record<string, unknown>;
+  response_status: number;
+  response_body: string;
+  success: boolean;
+  delivered_at: string;
+  duration_ms: number;
+}
+
+export interface Plugin {
+  id: string;
+  name: string;
+  description: string;
+  hooks: string[];
+  config: Record<string, unknown>;
+  enabled: boolean;
+  created_at: string;
+}
+
+export interface SecurityDashboard {
+  total_events: number;
+  events_today: number;
+  active_webhooks: number;
+  total_webhooks: number;
+  enabled_plugins: number;
+  total_plugins: number;
+  recent_events: AuditEntry[];
+  failed_deliveries_24h: number;
+}

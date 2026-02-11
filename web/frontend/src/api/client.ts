@@ -30,6 +30,11 @@ import type {
   LLMPreviewResult,
   LLMEnrichResult,
   LLMGuardrailSuggestion,
+  AuditEntry,
+  Webhook,
+  WebhookDelivery,
+  Plugin,
+  SecurityDashboard,
 } from '../types';
 
 class ApiError extends Error {
@@ -501,4 +506,96 @@ export async function llmDescribe(yamlContent: string): Promise<{ description: s
     method: 'POST',
     body: JSON.stringify({ yaml_content: yamlContent }),
   });
+}
+
+// Security & Audit API
+export async function getAuditEvents(params?: {
+  actor?: string;
+  action?: string;
+  resource_type?: string;
+  start_date?: string;
+  end_date?: string;
+  limit?: number;
+}): Promise<AuditEntry[]> {
+  const searchParams = new URLSearchParams();
+  if (params?.actor) searchParams.set('actor', params.actor);
+  if (params?.action) searchParams.set('action', params.action);
+  if (params?.resource_type) searchParams.set('resource_type', params.resource_type);
+  if (params?.start_date) searchParams.set('start_date', params.start_date);
+  if (params?.end_date) searchParams.set('end_date', params.end_date);
+  if (params?.limit) searchParams.set('limit', String(params.limit));
+  return request<AuditEntry[]>(`/api/security/audit?${searchParams.toString()}`);
+}
+
+export async function exportAuditLog(format: string): Promise<{ format: string; content: string; record_count: number }> {
+  return request<{ format: string; content: string; record_count: number }>(`/api/security/audit/export?format=${format}`);
+}
+
+export async function getSecurityDashboard(): Promise<SecurityDashboard> {
+  return request<SecurityDashboard>('/api/security/dashboard');
+}
+
+// Webhook API
+export async function createWebhook(name: string, url: string, events: string[], secret?: string): Promise<Webhook> {
+  return request<Webhook>('/api/security/webhooks', {
+    method: 'POST',
+    body: JSON.stringify({ name, url, events, secret: secret || '' }),
+  });
+}
+
+export async function listWebhooks(): Promise<Webhook[]> {
+  return request<Webhook[]>('/api/security/webhooks');
+}
+
+export async function getWebhook(id: string): Promise<Webhook> {
+  return request<Webhook>(`/api/security/webhooks/${id}`);
+}
+
+export async function updateWebhook(id: string, data: { name?: string; url?: string; events?: string[] }): Promise<Webhook> {
+  return request<Webhook>(`/api/security/webhooks/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteWebhook(id: string): Promise<void> {
+  await request<void>(`/api/security/webhooks/${id}`, { method: 'DELETE' });
+}
+
+export async function toggleWebhook(id: string, active: boolean): Promise<Webhook> {
+  return request<Webhook>(`/api/security/webhooks/${id}/toggle`, {
+    method: 'PUT',
+    body: JSON.stringify({ active }),
+  });
+}
+
+export async function testWebhook(id: string): Promise<WebhookDelivery> {
+  return request<WebhookDelivery>(`/api/security/webhooks/${id}/test`, { method: 'POST' });
+}
+
+export async function getWebhookDeliveries(id: string): Promise<WebhookDelivery[]> {
+  return request<WebhookDelivery[]>(`/api/security/webhooks/${id}/deliveries`);
+}
+
+// Plugin API
+export async function createPlugin(name: string, description?: string, hooks?: string[]): Promise<Plugin> {
+  return request<Plugin>('/api/security/plugins', {
+    method: 'POST',
+    body: JSON.stringify({ name, description: description || '', hooks: hooks || [] }),
+  });
+}
+
+export async function listPlugins(): Promise<Plugin[]> {
+  return request<Plugin[]>('/api/security/plugins');
+}
+
+export async function togglePlugin(id: string, enabled: boolean): Promise<Plugin> {
+  return request<Plugin>(`/api/security/plugins/${id}/toggle`, {
+    method: 'PUT',
+    body: JSON.stringify({ enabled }),
+  });
+}
+
+export async function deletePlugin(id: string): Promise<void> {
+  await request<void>(`/api/security/plugins/${id}`, { method: 'DELETE' });
 }

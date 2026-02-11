@@ -1,5 +1,5 @@
 import { NavLink, Outlet } from 'react-router-dom';
-import { Package, Search, ShieldCheck, Activity, Network, Wand2, Settings, Building2, Sparkles, Shield, ClipboardCheck } from 'lucide-react';
+import { Package, Search, ShieldCheck, Activity, Network, Wand2, Settings, Building2, Sparkles, Shield, ClipboardCheck, Lock } from 'lucide-react';
 import UserMenu from './UserMenu';
 
 const navItems = [
@@ -14,6 +14,7 @@ const navItems = [
   { to: '/llm', label: 'LLM', icon: Sparkles },
   { to: '/policies', label: 'Policies', icon: Shield },
   { to: '/approvals', label: 'Approvals', icon: ClipboardCheck },
+  { to: '/security', label: 'Security', icon: Lock },
 ];
 
 export default function Layout() {
