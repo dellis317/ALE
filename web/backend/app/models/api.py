@@ -935,3 +935,52 @@ class SecurityDashboardResponse(BaseModel):
     total_plugins: int = 0
     recent_events: list[AuditEntryResponse] = Field(default_factory=list)
     failed_deliveries_24h: int = 0
+
+
+# ---------------------------------------------------------------------------
+# Hierarchical Library Generation models
+# ---------------------------------------------------------------------------
+
+
+class LibraryDocNodeResponse(BaseModel):
+    """A node in the hierarchical library document tree."""
+
+    id: str
+    title: str
+    slug: str
+    type: str = "section"
+    summary: str = ""
+    content: str = ""
+    children: list["LibraryDocNodeResponse"] = Field(default_factory=list)
+
+
+class GeneratedLibraryResponse(BaseModel):
+    """A fully generated hierarchical library."""
+
+    id: str
+    name: str
+    root_doc: str
+    repo_path: str
+    candidate_name: str
+    created_at: str = ""
+    updated_at: str = ""
+    structure: LibraryDocNodeResponse
+
+
+class GenerateHierarchicalLibraryRequest(BaseModel):
+    """Request body for generating a hierarchical library from analysis."""
+
+    repo_path: str
+    candidate_name: str
+    candidate_description: str = ""
+    source_files: list[str] = Field(default_factory=list)
+    entry_points: list[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
+
+
+class GenerateHierarchicalLibraryResponse(BaseModel):
+    """Response for hierarchical library generation."""
+
+    success: bool
+    library: Optional[GeneratedLibraryResponse] = None
+    message: str = ""

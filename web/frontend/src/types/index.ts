@@ -474,3 +474,41 @@ export interface SecurityDashboard {
   recent_events: AuditEntry[];
   failed_deliveries_24h: number;
 }
+
+// Hierarchical Library Document types
+
+export interface LibraryDocNode {
+  id: string;
+  title: string;
+  slug: string;
+  type: 'root' | 'section' | 'subsection';
+  summary: string;
+  content: string;
+  children: LibraryDocNode[];
+}
+
+export interface GeneratedLibrary {
+  id: string;
+  name: string;
+  root_doc: string;
+  repo_path: string;
+  candidate_name: string;
+  created_at: string;
+  updated_at: string;
+  structure: LibraryDocNode;
+}
+
+export interface GenerateLibraryRequest {
+  repo_path: string;
+  candidate_name: string;
+  candidate_description: string;
+  source_files: string[];
+  entry_points: string[];
+  tags: string[];
+}
+
+export interface GenerateLibraryResponse {
+  success: boolean;
+  library: GeneratedLibrary;
+  message: string;
+}
