@@ -1,5 +1,5 @@
 import { NavLink, Outlet } from 'react-router-dom';
-import { Package, Search, ShieldCheck, Activity, Network, Wand2, Settings } from 'lucide-react';
+import { Package, Search, ShieldCheck, Activity, Network, Wand2, Settings, Building2, Sparkles, Shield, ClipboardCheck } from 'lucide-react';
 import UserMenu from './UserMenu';
 
 const navItems = [
@@ -10,6 +10,10 @@ const navItems = [
   { to: '/drift', label: 'Drift', icon: Activity },
   { to: '/ir', label: 'IR Explorer', icon: Network },
   { to: '/settings/api-keys', label: 'Settings', icon: Settings },
+  { to: '/orgs', label: 'Organizations', icon: Building2 },
+  { to: '/llm', label: 'LLM', icon: Sparkles },
+  { to: '/policies', label: 'Policies', icon: Shield },
+  { to: '/approvals', label: 'Approvals', icon: ClipboardCheck },
 ];
 
 export default function Layout() {

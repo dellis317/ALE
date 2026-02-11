@@ -15,6 +15,21 @@ import type {
   ConformanceHistoryEntry,
   BatchConformanceResult,
   DriftSummary,
+  Organization,
+  OrgMember,
+  OrgRepo,
+  OrgDashboard,
+  Policy,
+  PolicyRule,
+  PolicyEvaluation,
+  ApprovalRequest,
+  LLMStatus,
+  UsageSummary,
+  Budget,
+  BudgetStatus,
+  LLMPreviewResult,
+  LLMEnrichResult,
+  LLMGuardrailSuggestion,
 } from '../types';
 
 class ApiError extends Error {
@@ -278,4 +293,212 @@ export async function runBatchConformance(): Promise<BatchConformanceResult> {
 export async function getDriftSummary(repoPath: string): Promise<DriftSummary> {
   const params = new URLSearchParams({ repo_path: repoPath });
   return request<DriftSummary>(`/api/drift/summary?${params.toString()}`);
+}
+
+// Organization API
+export async function createOrg(name: string, description?: string): Promise<Organization> {
+  return request<Organization>('/api/orgs', {
+    method: 'POST',
+    body: JSON.stringify({ name, description: description || '' }),
+  });
+}
+
+export async function listOrgs(): Promise<Organization[]> {
+  return request<Organization[]>('/api/orgs');
+}
+
+export async function getOrg(slug: string): Promise<Organization> {
+  return request<Organization>(`/api/orgs/${slug}`);
+}
+
+export async function updateOrg(slug: string, data: { name?: string; description?: string }): Promise<Organization> {
+  return request<Organization>(`/api/orgs/${slug}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteOrg(slug: string): Promise<void> {
+  await request<void>(`/api/orgs/${slug}`, { method: 'DELETE' });
+}
+
+export async function listOrgMembers(slug: string): Promise<OrgMember[]> {
+  return request<OrgMember[]>(`/api/orgs/${slug}/members`);
+}
+
+export async function addOrgMember(slug: string, userId: string, role?: string): Promise<OrgMember> {
+  return request<OrgMember>(`/api/orgs/${slug}/members`, {
+    method: 'POST',
+    body: JSON.stringify({ user_id: userId, role: role || 'member' }),
+  });
+}
+
+export async function removeOrgMember(slug: string, userId: string): Promise<void> {
+  await request<void>(`/api/orgs/${slug}/members/${userId}`, { method: 'DELETE' });
+}
+
+export async function updateOrgMemberRole(slug: string, userId: string, role: string): Promise<OrgMember> {
+  return request<OrgMember>(`/api/orgs/${slug}/members/${userId}/role`, {
+    method: 'PUT',
+    body: JSON.stringify({ role }),
+  });
+}
+
+export async function listOrgRepos(slug: string): Promise<OrgRepo[]> {
+  return request<OrgRepo[]>(`/api/orgs/${slug}/repos`);
+}
+
+export async function addOrgRepo(slug: string, name: string, url: string, defaultBranch?: string): Promise<OrgRepo> {
+  return request<OrgRepo>(`/api/orgs/${slug}/repos`, {
+    method: 'POST',
+    body: JSON.stringify({ name, url, default_branch: defaultBranch || 'main' }),
+  });
+}
+
+export async function removeOrgRepo(slug: string, repoId: string): Promise<void> {
+  await request<void>(`/api/orgs/${slug}/repos/${repoId}`, { method: 'DELETE' });
+}
+
+export async function scanOrgRepo(slug: string, repoId: string): Promise<void> {
+  await request<void>(`/api/orgs/${slug}/repos/${repoId}/scan`, { method: 'POST' });
+}
+
+export async function getOrgDashboard(slug: string): Promise<OrgDashboard> {
+  return request<OrgDashboard>(`/api/orgs/${slug}/dashboard`);
+}
+
+// Policy API
+export async function createPolicy(name: string, description?: string, rules?: PolicyRule[]): Promise<Policy> {
+  return request<Policy>('/api/policies', {
+    method: 'POST',
+    body: JSON.stringify({ name, description: description || '', rules: rules || [] }),
+  });
+}
+
+export async function listPolicies(): Promise<Policy[]> {
+  return request<Policy[]>('/api/policies');
+}
+
+export async function getPolicy(id: string): Promise<Policy> {
+  return request<Policy>(`/api/policies/${id}`);
+}
+
+export async function updatePolicy(id: string, data: { name?: string; description?: string; rules?: PolicyRule[] }): Promise<Policy> {
+  return request<Policy>(`/api/policies/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deletePolicy(id: string): Promise<void> {
+  await request<void>(`/api/policies/${id}`, { method: 'DELETE' });
+}
+
+export async function togglePolicy(id: string, enabled: boolean): Promise<Policy> {
+  return request<Policy>(`/api/policies/${id}/toggle`, {
+    method: 'PUT',
+    body: JSON.stringify({ enabled }),
+  });
+}
+
+export async function evaluatePolicy(libraryName: string, libraryVersion?: string, targetFiles?: string[], capabilities?: string[]): Promise<PolicyEvaluation> {
+  return request<PolicyEvaluation>('/api/policies/evaluate', {
+    method: 'POST',
+    body: JSON.stringify({
+      library_name: libraryName,
+      library_version: libraryVersion || '1.0.0',
+      target_files: targetFiles || [],
+      capabilities_used: capabilities || [],
+    }),
+  });
+}
+
+// Approval API
+export async function createApprovalRequest(libraryName: string, libraryVersion: string, policyId: string, reason?: string): Promise<ApprovalRequest> {
+  return request<ApprovalRequest>('/api/approvals', {
+    method: 'POST',
+    body: JSON.stringify({ library_name: libraryName, library_version: libraryVersion, policy_id: policyId, reason: reason || '' }),
+  });
+}
+
+export async function listApprovals(status?: string): Promise<ApprovalRequest[]> {
+  const params = status ? `?status_filter=${status}` : '';
+  return request<ApprovalRequest[]>(`/api/approvals${params}`);
+}
+
+export async function approveRequest(id: string, comment?: string): Promise<ApprovalRequest> {
+  return request<ApprovalRequest>(`/api/approvals/${id}/approve`, {
+    method: 'POST',
+    body: JSON.stringify({ comment: comment || '' }),
+  });
+}
+
+export async function rejectRequest(id: string, comment?: string): Promise<ApprovalRequest> {
+  return request<ApprovalRequest>(`/api/approvals/${id}/reject`, {
+    method: 'POST',
+    body: JSON.stringify({ comment: comment || '' }),
+  });
+}
+
+export async function getPendingCount(): Promise<number> {
+  const data = await request<{ count: number }>('/api/approvals/pending/count');
+  return data.count;
+}
+
+// LLM API
+export async function getLLMStatus(): Promise<LLMStatus> {
+  return request<LLMStatus>('/api/llm/status');
+}
+
+export async function getLLMUsage(period?: string): Promise<UsageSummary> {
+  const params = period ? `?period=${period}` : '';
+  return request<UsageSummary>(`/api/llm/usage${params}`);
+}
+
+export async function getLLMCost(period?: string): Promise<{ total_cost: number }> {
+  const params = period ? `?period=${period}` : '';
+  return request<{ total_cost: number }>(`/api/llm/usage/cost${params}`);
+}
+
+export async function getLLMBudget(): Promise<Budget> {
+  return request<Budget>('/api/llm/budget');
+}
+
+export async function setLLMBudget(monthlyLimit: number, alertThresholdPct?: number): Promise<Budget> {
+  return request<Budget>('/api/llm/budget', {
+    method: 'PUT',
+    body: JSON.stringify({ monthly_limit: monthlyLimit, alert_threshold_pct: alertThresholdPct || 80 }),
+  });
+}
+
+export async function getLLMBudgetStatus(): Promise<BudgetStatus> {
+  return request<BudgetStatus>('/api/llm/budget/status');
+}
+
+export async function generatePreview(yamlContent: string): Promise<LLMPreviewResult> {
+  return request<LLMPreviewResult>('/api/llm/preview', {
+    method: 'POST',
+    body: JSON.stringify({ yaml_content: yamlContent }),
+  });
+}
+
+export async function llmEnrich(yamlContent: string): Promise<LLMEnrichResult> {
+  return request<LLMEnrichResult>('/api/llm/enrich', {
+    method: 'POST',
+    body: JSON.stringify({ yaml_content: yamlContent }),
+  });
+}
+
+export async function suggestGuardrails(yamlContent: string): Promise<LLMGuardrailSuggestion> {
+  return request<LLMGuardrailSuggestion>('/api/llm/suggest-guardrails', {
+    method: 'POST',
+    body: JSON.stringify({ yaml_content: yamlContent }),
+  });
+}
+
+export async function llmDescribe(yamlContent: string): Promise<{ description: string }> {
+  return request<{ description: string }>('/api/llm/describe', {
+    method: 'POST',
+    body: JSON.stringify({ yaml_content: yamlContent }),
+  });
 }

@@ -492,3 +492,274 @@ class DriftSummaryResponse(BaseModel):
     clean_count: int = 0
     drifted_count: int = 0
     by_type: dict[str, int] = Field(default_factory=dict)
+
+
+# ---------------------------------------------------------------------------
+# Organization models
+# ---------------------------------------------------------------------------
+
+
+class OrganizationResponse(BaseModel):
+    """Public representation of an organization."""
+
+    id: str
+    name: str
+    slug: str
+    description: str = ""
+    owner_id: str = ""
+    created_at: str = ""
+    member_count: int = 0
+    repo_count: int = 0
+
+
+class CreateOrgRequest(BaseModel):
+    """Request body for creating a new organization."""
+
+    name: str
+    description: str = ""
+
+
+class UpdateOrgRequest(BaseModel):
+    """Request body for updating an organization."""
+
+    name: str = ""
+    description: str = ""
+
+
+class OrgMemberResponse(BaseModel):
+    """Public representation of an organization member."""
+
+    user_id: str
+    username: str = ""
+    email: str = ""
+    role: str = "member"
+    joined_at: str = ""
+
+
+class AddMemberRequest(BaseModel):
+    """Request body for adding a member to an organization."""
+
+    user_id: str
+    role: str = "member"
+
+
+class RepoResponse(BaseModel):
+    """Public representation of a repository."""
+
+    id: str
+    org_id: str
+    name: str
+    url: str
+    default_branch: str = "main"
+    added_at: str = ""
+    last_scanned: str = ""
+    scan_status: str = "pending"
+
+
+class AddRepoRequest(BaseModel):
+    """Request body for adding a repository to an organization."""
+
+    name: str
+    url: str
+    default_branch: str = "main"
+
+
+class OrgDashboardResponse(BaseModel):
+    """Dashboard statistics for an organization."""
+
+    org: OrganizationResponse
+    total_libraries: int = 0
+    total_members: int = 0
+    total_repos: int = 0
+    recent_scans: list[RepoResponse] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Policy models
+# ---------------------------------------------------------------------------
+
+
+class PolicyRuleRequest(BaseModel):
+    """A single rule within a policy."""
+
+    name: str
+    description: str = ""
+    scope: str = "all"
+    action: str = "allow"
+    patterns: list[str] = Field(default_factory=list)
+    conditions: dict[str, str] = Field(default_factory=dict)
+    rationale: str = ""
+
+
+class PolicyResponse(BaseModel):
+    """Public representation of a policy."""
+
+    id: str
+    name: str
+    description: str = ""
+    version: str = "1.0.0"
+    rules: list[PolicyRuleRequest] = Field(default_factory=list)
+    created_at: str = ""
+    updated_at: str = ""
+    enabled: bool = True
+
+
+class CreatePolicyRequest(BaseModel):
+    """Request body for creating a new policy."""
+
+    name: str
+    description: str = ""
+    rules: list[PolicyRuleRequest] = Field(default_factory=list)
+
+
+class UpdatePolicyRequest(BaseModel):
+    """Request body for updating an existing policy."""
+
+    name: str = ""
+    description: str = ""
+    rules: list[PolicyRuleRequest] = Field(default_factory=list)
+
+
+class TogglePolicyRequest(BaseModel):
+    """Request body for toggling a policy's enabled state."""
+
+    enabled: bool
+
+
+class EvaluatePolicyRequest(BaseModel):
+    """Request body for evaluating policies against a context."""
+
+    library_name: str
+    library_version: str = "1.0.0"
+    target_files: list[str] = Field(default_factory=list)
+    capabilities_used: list[str] = Field(default_factory=list)
+
+
+class PolicyEvaluationResponse(BaseModel):
+    """Response for policy evaluation results."""
+
+    allowed: bool
+    action: str
+    matched_rules: list[dict] = Field(default_factory=list)
+    reasons: list[str] = Field(default_factory=list)
+
+
+class ApprovalRequestResponse(BaseModel):
+    """Public representation of an approval request."""
+
+    id: str
+    library_name: str
+    library_version: str
+    requester_id: str
+    policy_id: str
+    reason: str = ""
+    status: str = "pending"
+    created_at: str = ""
+    decided_at: str = ""
+    decided_by: str = ""
+    decision_comment: str = ""
+
+
+class CreateApprovalRequest(BaseModel):
+    """Request body for creating an approval request."""
+
+    library_name: str
+    library_version: str
+    policy_id: str
+    reason: str = ""
+
+
+class ApprovalDecisionRequest(BaseModel):
+    """Request body for approving or rejecting an approval request."""
+
+    comment: str = ""
+
+
+# ---------------------------------------------------------------------------
+# LLM models
+# ---------------------------------------------------------------------------
+
+
+class LLMPreviewRequest(BaseModel):
+    yaml_content: str
+    format: str = "markdown"
+
+
+class LLMPreviewResponse(BaseModel):
+    preview: str
+    tokens_used: int = 0
+    cost_estimate: float = 0.0
+
+
+class LLMEnrichRequest(BaseModel):
+    yaml_content: str
+
+
+class LLMEnrichResponse(BaseModel):
+    enriched_yaml: str
+    changes_summary: list[str] = Field(default_factory=list)
+    tokens_used: int = 0
+    cost_estimate: float = 0.0
+
+
+class LLMSuggestGuardrailsRequest(BaseModel):
+    yaml_content: str
+
+
+class LLMSuggestGuardrailsResponse(BaseModel):
+    guardrails: list[dict] = Field(default_factory=list)
+    tokens_used: int = 0
+    cost_estimate: float = 0.0
+
+
+class LLMDescribeRequest(BaseModel):
+    yaml_content: str
+
+
+class LLMDescribeResponse(BaseModel):
+    description: str
+    tokens_used: int = 0
+    cost_estimate: float = 0.0
+
+
+class UsageRecordResponse(BaseModel):
+    id: str
+    model: str
+    input_tokens: int
+    output_tokens: int
+    purpose: str
+    cost_estimate: float
+    timestamp: str
+
+
+class UsageSummaryResponse(BaseModel):
+    total_input_tokens: int = 0
+    total_output_tokens: int = 0
+    total_cost: float = 0.0
+    record_count: int = 0
+    records: list[UsageRecordResponse] = Field(default_factory=list)
+
+
+class BudgetResponse(BaseModel):
+    monthly_limit: float = 0.0
+    alert_threshold_pct: float = 80.0
+    current_month_cost: float = 0.0
+
+
+class BudgetUpdateRequest(BaseModel):
+    monthly_limit: float
+    alert_threshold_pct: float = 80.0
+
+
+class BudgetStatusResponse(BaseModel):
+    allowed: bool = True
+    remaining: float = 0.0
+    percent_used: float = 0.0
+    over_limit: bool = False
+    monthly_limit: float = 0.0
+
+
+class LLMStatusResponse(BaseModel):
+    configured: bool
+    model: str = ""
+    message: str = ""

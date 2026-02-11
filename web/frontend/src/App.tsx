@@ -11,6 +11,11 @@ import IRExplorer from './pages/IRExplorer';
 import Generator from './pages/Generator';
 import Login from './pages/Login';
 import Settings from './pages/Settings';
+import Organizations from './pages/Organizations';
+import OrgDetail from './pages/OrgDetail';
+import LLMDashboard from './pages/LLMDashboard';
+import Policies from './pages/Policies';
+import Approvals from './pages/Approvals';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -37,6 +42,11 @@ function App() {
               <Route path="ir" element={<IRExplorer />} />
               <Route path="generate" element={<Generator />} />
               <Route path="settings/api-keys" element={<Settings />} />
+              <Route path="orgs" element={<Organizations />} />
+              <Route path="orgs/:slug" element={<OrgDetail />} />
+              <Route path="llm" element={<LLMDashboard />} />
+              <Route path="policies" element={<Policies />} />
+              <Route path="approvals" element={<Approvals />} />
             </Route>
           </Routes>
         </BrowserRouter>

@@ -250,3 +250,143 @@ export interface DriftSummary {
   drifted_count: number;
   by_type: Record<string, number>;
 }
+
+// Organization types
+export interface Organization {
+  id: string;
+  name: string;
+  slug: string;
+  description: string;
+  owner_id: string;
+  created_at: string;
+  member_count: number;
+  repo_count: number;
+}
+
+export interface OrgMember {
+  user_id: string;
+  username: string;
+  email: string;
+  role: string;
+  joined_at: string;
+}
+
+export interface OrgRepo {
+  id: string;
+  org_id: string;
+  name: string;
+  url: string;
+  default_branch: string;
+  added_at: string;
+  last_scanned: string;
+  scan_status: string;
+}
+
+export interface OrgDashboard {
+  org: Organization;
+  total_libraries: number;
+  total_members: number;
+  total_repos: number;
+  recent_scans: OrgRepo[];
+}
+
+// Policy types
+export interface PolicyRule {
+  name: string;
+  description: string;
+  scope: string;
+  action: string;
+  patterns: string[];
+  conditions: Record<string, string>;
+  rationale: string;
+}
+
+export interface Policy {
+  id: string;
+  name: string;
+  description: string;
+  version: string;
+  rules: PolicyRule[];
+  created_at: string;
+  updated_at: string;
+  enabled: boolean;
+}
+
+export interface PolicyEvaluation {
+  allowed: boolean;
+  action: string;
+  matched_rules: Record<string, unknown>[];
+  reasons: string[];
+}
+
+export interface ApprovalRequest {
+  id: string;
+  library_name: string;
+  library_version: string;
+  requester_id: string;
+  policy_id: string;
+  reason: string;
+  status: string;
+  created_at: string;
+  decided_at: string;
+  decided_by: string;
+  decision_comment: string;
+}
+
+// LLM types
+export interface UsageRecord {
+  id: string;
+  model: string;
+  input_tokens: number;
+  output_tokens: number;
+  purpose: string;
+  cost_estimate: number;
+  timestamp: string;
+}
+
+export interface UsageSummary {
+  total_input_tokens: number;
+  total_output_tokens: number;
+  total_cost: number;
+  record_count: number;
+  records: UsageRecord[];
+}
+
+export interface Budget {
+  monthly_limit: number;
+  alert_threshold_pct: number;
+  current_month_cost: number;
+}
+
+export interface BudgetStatus {
+  allowed: boolean;
+  remaining: number;
+  percent_used: number;
+  over_limit: boolean;
+  monthly_limit: number;
+}
+
+export interface LLMStatus {
+  configured: boolean;
+  model: string;
+  message: string;
+}
+
+export interface LLMPreviewResult {
+  preview: string;
+  tokens_used: number;
+  cost_estimate: number;
+}
+
+export interface LLMEnrichResult {
+  enriched_yaml: string;
+  changes_summary: string[];
+  tokens_used: number;
+  cost_estimate: number;
+}
+
+export interface LLMGuardrailSuggestion {
+  guardrails: Record<string, unknown>[];
+  tokens_used: number;
+  cost_estimate: number;
+}
