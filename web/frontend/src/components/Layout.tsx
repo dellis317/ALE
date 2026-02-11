@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { Package, Search, ShieldCheck, Activity, Network, Wand2, Settings, Building2, Sparkles, Shield, ClipboardCheck, Lock, Compass } from 'lucide-react';
 import UserMenu from './UserMenu';
+import DeploymentConfigGuide, { hasSeenDeployGuide } from './DeploymentConfigGuide';
 import { hasCompletedSetup } from '../pages/SetupWizard';
 
 const navItems = [
@@ -24,6 +25,7 @@ const wizardNavItem = { to: '/setup', label: 'Setup Wizard', icon: Compass };
 export default function Layout() {
   const navigate = useNavigate();
   const [checkedSetup, setCheckedSetup] = useState(false);
+  const [showDeployGuide, setShowDeployGuide] = useState(() => !hasSeenDeployGuide());
 
   useEffect(() => {
     if (!checkedSetup) {
@@ -36,6 +38,10 @@ export default function Layout() {
 
   return (
     <div className="flex h-screen bg-gray-50">
+      {/* First-deploy configuration guide popup */}
+      {showDeployGuide && (
+        <DeploymentConfigGuide onClose={() => setShowDeployGuide(false)} />
+      )}
       {/* Sidebar */}
       <aside className="w-64 flex-shrink-0 bg-[#0f172a] text-white flex flex-col">
         {/* Logo */}
